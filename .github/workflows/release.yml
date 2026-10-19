@@ -1,0 +1,58 @@
+name: Test and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Skill tests
+        run: python3 -B exam-skill/tests/test_skill.py
+      - name: Server environment
+        run: |
+          uv venv --python 3.12 venv
+          VIRTUAL_ENV=$PWD/venv uv pip install "python-hwpx-automation[mcp]==7.3.4" plugins/hyeyum-hwpx/server/wheels/*.whl pytest
+      - name: Server tests
+        run: PYTHONDONTWRITEBYTECODE=1 venv/bin/python -m pytest toolkit/tests -q -p no:cacheprovider
+
+  release:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version
+        id: version
+        run: |
+          tag="v$(jq -r .version toolkit/manifest.json)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" > /dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Build .mcpb
+        if: steps.version.outputs.exists == 'false'
+        run: bash toolkit/build.sh
+      - name: Publish release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "$TAG" dist/*.mcpb --target "$GITHUB_SHA" --title "hyeyum-hwpx $TAG" --notes "$(cat .github/release-notes.md)" --generate-notes
