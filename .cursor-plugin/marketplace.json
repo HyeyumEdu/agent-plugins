@@ -1,0 +1,12 @@
+{
+  "name": "hyeyum",
+  "owner": { "name": "HyeyumEdu" },
+  "metadata": { "description": "혜윰 교사용 플러그인 모음" },
+  "plugins": [
+    {
+      "name": "hyeyum-hwpx",
+      "source": "plugins/hyeyum-hwpx",
+      "description": "고등학교 국어 시험지를 한글(.hwpx)로 만드는 스킬과 한글 문서 편집 MCP 도구"
+    }
+  ]
+}

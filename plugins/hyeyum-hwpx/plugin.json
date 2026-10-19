@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hyeyum-hwpx",
+  "version": "1.0.0",
+  "description": "고등학교 국어 시험지를 한글(.hwpx)로 만드는 스킬과 한글 문서 편집 MCP 도구",
+  "author": { "name": "JunseoKR" },
+  "repository": "https://github.com/HyeyumEdu/agent-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["hwpx", "한글", "시험지", "국어"]
+}

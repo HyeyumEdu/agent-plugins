@@ -1,0 +1,13 @@
+[project]
+name = "hyeyum-hwpx-toolkit-mcp"
+version = "1.0.0"
+description = "HWPX 시험지 작성·수정 MCP (python-hwpx 개선판 포함)"
+requires-python = ">=3.10"
+dependencies = [
+  "python-hwpx-automation[mcp]==7.3.4",
+  "python-hwpx",
+]
+
+# 개선한 python-hwpx(포크)를 번들한 wheel로 설치한다. 사용자 PC에 git이 없어도 된다.
+[tool.uv.sources]
+python-hwpx = { path = "wheels/python_hwpx-6.8.0-py3-none-any.whl" }

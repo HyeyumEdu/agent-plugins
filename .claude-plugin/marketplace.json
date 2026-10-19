@@ -1,0 +1,14 @@
+{
+  "name": "hyeyum",
+  "description": "혜윰학원 에이전트 플러그인",
+  "owner": {
+    "name": "HyeyumEdu"
+  },
+  "plugins": [
+    {
+      "name": "hyeyum-hwpx",
+      "source": "./plugins/hyeyum-hwpx",
+      "description": "국어 시험지를 한글(.hwpx)로 만드는 스킬과 한글 문서 편집 도구"
+    }
+  ]
+}
