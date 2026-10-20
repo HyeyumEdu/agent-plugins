@@ -1,0 +1,60 @@
+{
+  "id": "bogi-box",
+  "name": "보기 상자",
+  "desc": "〈 보 기 〉 1×1 표(글자처럼 취급): 시·산문 줄과 출처줄",
+  "kind": "table",
+  "roles": {
+    "outer": {
+      "pp": 53,
+      "cp": 0
+    },
+    "label": {
+      "pp": 54,
+      "cp": 41
+    },
+    "line_poem": {
+      "pp": 85,
+      "cp": 0
+    },
+    "line_prose": {
+      "pp": 55,
+      "cp": 0
+    },
+    "bold": {
+      "cp": 10
+    },
+    "underline": {
+      "cp": 32
+    },
+    "source": {
+      "pp": 42,
+      "cp": 3
+    },
+    "table": {
+      "bf": 8
+    },
+    "cell": {
+      "bf": 9
+    }
+  },
+  "slots": {
+    "본문": "상자 안 문단(〈 보 기 〉 표지·줄·출처줄)"
+  },
+  "fit": {
+    "width": 189.4,
+    "size": 10,
+    "mult": 1.25,
+    "fixed": 800,
+    "extra": 250,
+    "floor": 0
+  },
+  "rules": [
+    "G17",
+    "G33",
+    "G39",
+    "G50"
+  ],
+  "used_by": [
+    "question.bogi"
+  ]
+}

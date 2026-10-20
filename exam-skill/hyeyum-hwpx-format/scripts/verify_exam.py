@@ -1,8 +1,9 @@
-"""HWPX 시험지가 references/format-spec.md 의 규칙(G1~G49, V1·V5·V9)을 지키는지 XML 로 검사한다(표준 라이브러리만).
+"""HWPX 시험지가 references/format-spec.md 의 규칙(G1~G50, V1·V5·V9)을 지키는지 XML 로 검사한다(표준 라이브러리만).
 기본은 엄격 모드(새로 만든 시험지용). --lenient 는 한컴이 저장한 원본처럼 작은 예외가 있는 파일용.
 출력: 규칙 ID, PASS/FAIL/WARN, 설명, 측정값. 종료 코드: FAIL·열 수 없는 파일이 있으면 1, 사용법 오류 2.
 shortcut: 표준 XML 파서라 출처를 모르는 파일은 검사하지 않는다(직접 만든·받은 시험지만), 필요하면 defusedxml 로 바꾼다."""
-import re, sys, unicodedata, zipfile, zlib
+import importlib.util, json, re, sys, unicodedata, zipfile, zlib
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from collections import Counter
 
@@ -11,6 +12,21 @@ P = '{http://www.hancom.co.kr/hwpml/2011/paragraph}'
 C = '{http://www.hancom.co.kr/hwpml/2011/core}'
 USAGE = '사용: python3 verify_exam.py [--lenient] 파일.hwpx [파일2.hwpx ...]'
 ln = lambda e: e.tag.rsplit('}', 1)[-1]
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견준다. 부품을 읽지 못하면 트레이스백 대신 오류 글을 돌려준다
+    # shortcut: 형식이 둘 이상이면 기본 형식의 부품만 본다 — 두 번째 형식을 더할 때 --format 인수를 넣는다
+    try:
+        sys.dont_write_bytecode = True
+        spec = importlib.util.spec_from_file_location('components', Path(__file__).with_name('components.py'))
+        cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
+        fs = json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
+        fmt = next((f for f in fs if f.get('default')), fs[0] if len(fs) == 1 else None)
+        if fmt is None: return ['기본 형식(formats.json 의 default)을 정할 수 없습니다']
+        return cm.shape_problems(cm.Registry(ROOT, fmt), d.hd, d.sec)
+    except SystemExit as e: return [f'부품을 읽지 못했습니다({str(e.code).replace("오류: ", "", 1)})']
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e: return [f'부품을 읽지 못했습니다({type(e).__name__}: {e})']
 
 
 def ttext(t):  # hp:t 의 글. <hp:nbSpace/> 같은 자식 요소 뒤의 글(tail)도 읽는다
@@ -368,6 +384,8 @@ def rules(d, lenient=False):
                and it_ is not None and int(it_.get('pos')) == pr['L'] + abs(pr['F']) and pr['F'] < 0)
         if not ok_: bad49.append(d.txt(p_)[:8])
     add('G49', '선택지: 원문자 바로 뒤에 탭 1개, 탭 정지 = left+|intent| (첫 줄 본문 시작 = 둘째 줄 시작, 번호 뒤 간격이 선택지마다 같음)' + ('(원본 검사: 골든은 공백이라 건너뜀)' if lenient else ''), lenient or not bad49, f'위반 {len(bad49)}개 {bad49[:3]}')
+    p50 = [] if lenient else shape_check(d)
+    add('G50', '본문 문단·글자·표 테두리 모양이 모두 등록된 부품의 모양과 같음' + ('(원본 검사는 건너뜀)' if lenient else ''), not p50, p50[:3])
     sizes = Counter(d.size(c) for p in d.body for t, c in d.runs(p) if t.strip() and not d.inside(p, 'endNote'))
     add('V1', '본문 글자 크기(보고용)', True, dict(sizes.most_common(3)))
     add('V5', '선택지 줄간격(보고용)', True, sorted({p['ls'] for p in cps}))

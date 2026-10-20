@@ -1,0 +1,21 @@
+{
+  "id": "blank",
+  "name": "빈 줄",
+  "desc": "본문 글자 크기의 빈 문단",
+  "kind": "para",
+  "roles": {
+    "line": {
+      "pp": 0,
+      "cp": 0
+    }
+  },
+  "slots": {},
+  "fit": {},
+  "rules": [
+    "G37",
+    "G50"
+  ],
+  "used_by": [
+    "blank"
+  ]
+}

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """원본 exam-skill/hyeyum-hwpx-format 에서 플러그인 스킬을 만들어 plugins/hyeyum-hwpx/skills/ 에 쓴다.
   skills/format/       형식을 아직 안 정한 요청을 받는 라우터(모든 형식·detect_format.py 포함, 형식이 둘 이상일 때만)
-  skills/<형식 id>/    형식을 고정한 전용 명령 /hyeyum-hwpx:<형식 id> (그 형식의 템플릿·예시·조각·문서 내용만)
+  skills/<형식 id>/    형식을 고정한 전용 명령 /hyeyum-hwpx:<형식 id> (그 형식의 템플릿·예시·부품·문서 내용만)
 Claude Desktop 에서 스킬 폴더가 따로 올라갈 수 있어 각 스킬은 scripts 를 복사해 스스로 완결된다.
 문서(SKILL.md·references/*.md)의 `<!-- format:<id>[,<id>…] -->`…`<!-- /format -->` 구간은 그 id 를 가진 스킬에만 남는다.
   id 는 형식 id, `router`(라우터에만), `pinned`(전용 명령에만). 라우터는 router 와 들어간 모든 형식의 구간을 남긴다.
   구간 표시가 줄 머리에 혼자 있으면 줄 단위, 아니면 줄 안에서 그 부분만.
 사용: python3 build_plugin.py [--all] [출력_폴더(기본: plugins/hyeyum-hwpx/skills)]
   --all  "plugin": false 형식까지 넣는다(미리 보기·시험용)"""
-import json, re, shutil, sys
+import importlib.util, json, re, shutil, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SRC = HERE / 'hyeyum-hwpx-format'
 PLUGIN = 'hyeyum-hwpx'
-SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py']
+SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py', 'scripts/components.py']
 DOCS = ['references/exam-json.md', 'references/format-spec.md']
 USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 만들거나 기존 시험지를 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
 EXCLUDE = '서술형·단답형, 국어 외 과목, 파일 없이 채팅으로만 하는 출제, 공문 같은 일반 문서, 워드(.docx) 변환에는 쓰지 않는다.'
@@ -33,12 +33,17 @@ def copy(rel, d):
     (d / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(SRC / rel, d / rel)
 
 
+def load_catalog():  # 목록 문서는 스킬 안 components.py 와 같은 코드로 만든다
+    spec = importlib.util.spec_from_file_location('components_src', SRC / 'scripts/components.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m.catalog
+
+
 def build(out, include_all=False):
     formats = json.loads((SRC / 'assets/formats.json').read_text(encoding='utf-8'))
     if not include_all: formats = [f for f in formats if f.get('plugin', True)]
     router = len(formats) > 1  # 형식이 하나면 고를 것이 없다
     body = re.match(r'---\n.*?\n---\n(.*)', (SRC / 'SKILL.md').read_text(encoding='utf-8'), re.S).group(1)
     if out.exists(): shutil.rmtree(out)
+    catalog = load_catalog()
     router_desc = ('국어 5지선다 시험지를 한글(.hwpx) 파일로 만들 때, 어느 형식으로 만들지 정하지 않았거나 올린 시험지 파일에서 형식을 알아내야 할 때 쓴다. '
                    '시험지·문제지·중간·기말고사·모의고사, 보기 상자, 정답·해설 미주, 기존 시험지 서식 정리. 등록된 형식: '
                    + ', '.join(f'{f["title"]}(/{PLUGIN}:{f["id"]})' for f in formats) + f'. {EXCLUDE}')
@@ -54,9 +59,12 @@ def build(out, include_all=False):
             (d / rel).parent.mkdir(parents=True, exist_ok=True); (d / rel).write_text(keep_blocks((SRC / rel).read_text(encoding='utf-8'), s['ids']), encoding='utf-8')
         (d / 'assets').mkdir(exist_ok=True)
         (d / 'assets/formats.json').write_text(json.dumps(s['formats'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        for fid in [f['id'] for f in s['formats']]:
-            for rel in [f'assets/examples/example_{fid}.json', f'assets/templates/exam_template_{fid}.hwpx'] + [str(p.relative_to(SRC)) for p in sorted((SRC / 'assets/snippets').glob(f'{fid}_*.xml'))]:
-                copy(rel, d)
+        for f in s['formats']:
+            for rel in [f'assets/examples/example_{f["id"]}.json', f'assets/templates/{f["template"]}']: copy(rel, d)
+            for pid in f['parts'].values():
+                assert (SRC / 'assets/components' / pid).is_dir(), f'형식 {f["id"]}: 부품 {pid} 폴더가 없습니다'
+                for src in sorted((SRC / 'assets/components' / pid).iterdir()): copy(str(src.relative_to(SRC)), d)
+        (d / 'references/components.md').write_text('\n'.join(catalog(SRC, f['id'], md=True) for f in s['formats']), encoding='utf-8')
         desc = s['desc'].replace('\n', ' ')
         assert len(desc) <= 1024, (s['id'], len(desc))  # Agent Skills 표준의 description 상한
         (d / 'SKILL.md').write_text(f'---\nname: {s["id"]}\ndescription: {desc}\n---\n{keep_blocks(body, s["ids"])}', encoding='utf-8')

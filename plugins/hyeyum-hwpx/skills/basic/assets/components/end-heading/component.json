@@ -1,0 +1,21 @@
+{
+  "id": "end-heading",
+  "name": "정답과 해설 제목",
+  "desc": "맨 끝 새 쪽의 정답과 해설 제목(13pt 굵게, 자동)",
+  "kind": "para",
+  "roles": {
+    "heading": {
+      "pp": 0,
+      "cp": 12
+    }
+  },
+  "slots": {},
+  "fit": {},
+  "rules": [
+    "G35",
+    "G50"
+  ],
+  "used_by": [
+    "end_heading(자동)"
+  ]
+}

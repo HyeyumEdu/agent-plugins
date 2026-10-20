@@ -14,7 +14,15 @@ def load_verify():  # python3 -I 는 스크립트 폴더를 sys.path 에 넣지 
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
 
 
+def load_components():  # 부품 읽기·모양 맞추기도 같은 방식으로 불러온다
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location('components', Path(__file__).with_name('components.py'))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+
+
 V = load_verify()  # 선택지 끝·원문자·줄거리 판정은 검사기와 같은 정의를 쓴다
+CM = load_components()
+item_count, clone, add_items = CM.item_count, CM.clone, CM.add_items
 NEG, MARK, LABEL, DEF, sentence_kind = V.NEG, V.MARK, V.LABEL, V.DEF, V.sentence_kind
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,13 +35,6 @@ CTRL = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\ufffe\uffff\ud800-\udfff
 RANGE = r'[\[［]\s*\d+\s*[~∼～〜\-–]\s*\d+\s*[\]］]'  # 문제 번호 범위 [1~3]
 INSTR_HEAD = re.compile(r'^(?:\s*(?:' + RANGE + r'|[※＊*]|\d+\s*[.)])\s*)+')  # 안내문 앞머리의 [1~3]·※·1. (여러 개)
 
-# 템플릿 헤더의 문단 모양(pp)·글자 모양(cp) ID. 근거는 references/format-spec.md 3절.
-IDS = {
-    'basic': dict(head=12, instr=(0, 10), stem=(62, 37, 38), choice=(41, 0), box=dict(norm=0, bold=10, pp=32, src=(43, 3), ul=32, lbl=3, sum=3),
-              bogi=dict(norm=0, bold=10, pp=85, label=(54, 41), src=(42, 3), ul=32), title=(61, 53), snippet='basic_bogi_box_1x1.xml'),
-}
-# 표 높이 어림: (칸 안쪽 폭 pt, 글자 크기 pt, 줄간격 배수, 고정 높이, 문단마다 더할 높이, 최소 높이), 높이는 hwpunit.
-FIT = {'basic_bogi_box_1x1.xml': (189.4, 10, 1.25, 800, 250, 0)}
 KEYS = {
     'top': {'format', 'title', 'items', 'group_start'}, 'blank': {'type', 'n'}, 'instruction': {'type', 'text'}, 'passage': {'type', 'paras', 'source'},
     'question': {'type', 'stem', 'answer', 'choices', 'score', 'bogi', 'note'}, 'end_heading': {'type', 'text'}, 'column_break': {'type'}, 'page_break': {'type'},
@@ -43,11 +44,9 @@ ITEM_TYPES = ('blank', 'instruction', 'passage', 'question', 'end_heading', 'col
 WARNINGS = []
 COLW, BODY = 201.26, 657.61  # 한 단의 폭·본문 높이(pt) (format-spec 7절)
 
-# 선택지 줄바꿈 예측(자간 줄이기용). 번호 뒤 탭 덕에 모든 줄이 탭 정지(left+|intent|)에서 시작해 줄 폭이 같다.
-# CHW = (본문 줄 폭 pt = 201.24 − left − |intent|, 글자 크기 pt, 보정 pt). 보정은 골든 선택지 줄바꿈에 맞춘 값(117/117 일치).
+# 선택지 줄바꿈 예측(자간 줄이기용). 번호 뒤 탭 덕에 모든 줄이 탭 정지(left+|intent|)에서 시작해 줄 폭이 같다(choice_geom).
+# 줄 폭 보정(adjust)은 골든 선택지 줄바꿈에 맞춘 값(117/117 일치)으로 부품 choice5 의 fit 에 있다.
 # shortcut: 한컴 글꼴 폭표 없이 글자 종류별 폭(em)으로 어림한다 — 영문·기호가 많으면 틀릴 수 있고, 그때는 한글에서 자간을 직접 고친다.
-CHW = {'basic': (181.36, 10, -0.5)}
-CHOICE = {'basic': (500, 1488, 10)}  # 선택지 문단의 (left, |intent|, 글자 크기 pt)
 SAFE = 2.0  # 자간을 줄인 뒤 들어가는지는 이만큼(pt) 좁은 폭으로 확인한다
 NOLS = '.,?!)]’”」』》〉'  # 줄머리 금칙: 앞 글자와 함께 내려간다
 HANGUL_EM = .9689  # 함초롬바탕 한글·원문자 폭(em)
@@ -99,10 +98,17 @@ def wrap_lines(t, size, w, sp=0):
     return [t[a:b] for a, b in zip(cuts, cuts[1:] + [len(t)])]
 
 
-def tighten(t, fid):
+def choice_geom(hdr, part):  # 선택지 문단·글자 모양에서 줄 폭을 얻는다. hp:switch 는 case(HwpUnitChar) 값이 먼저 오고 default 는 2배다
+    x = re.search(rf'<hh:paraPr id="{part.pp("choice")}" .*?</hh:paraPr>', hdr, re.S).group(0)
+    left, intent = (int(re.search(rf'<hc:{k} value="(-?\d+)"', x).group(1)) for k in ('left', 'intent'))
+    size = int(re.search(rf'<hh:charPr id="{part.cp("choice")}" [^>]*?height="(\d+)"', hdr).group(1)) / 100
+    return dict(width=round(part.fit['wrap'] - left / 100 - abs(intent) / 100, 2), size=size, adjust=part.fit['adjust'], left=left, hang=abs(intent))
+
+
+def tighten(t, ch):
     """선택지 본문의 마지막 줄에 한 글자(+문장부호)만 남으면 한 줄을 덜 쓰는 가장 작은 자간(-1~-7%)을 찾는다.
-    반환 (자간 %, 줄 수, -7%로도 안 되는지)."""
-    w, size, dl = CHW[fid]
+    ch: choice_geom 결과(width, size, adjust). 반환 (자간 %, 줄 수, -7%로도 안 되는지)."""
+    w, size, dl = ch['width'], ch['size'], ch['adjust']
     nom = wrap_lines(t, size, w + dl)  # 넘침 판정은 보정 폭으로(좁게 잡으면 골든에서 헛판정이 늘었다)
     if not (len(nom) > 1 and len(nom[-1].strip(' .?!,’”)]」』》〉')) <= 1): return 0, len(nom), False
     for k in range(1, 8):
@@ -119,27 +125,14 @@ def run_xml(cp, t): return f'<hp:run charPrIDRef="{cp}"><hp:t>{escape(t)}</hp:t>
 
 
 def para(pp, runs, style=0):  # runs: [(글자 모양, 글)]
-    return p_xml(pp, ''.join(run_xml(c, t) for c, t in runs) or '<hp:run charPrIDRef="0"/>', style)
+    return p_xml(pp, ''.join(run_xml(c, t) for c, t in runs), style)
 
 
-def choice_xml(pp, cp, n, body, fid):  # 원문자 + 탭 + 본문. 탭이 끝나는 곳(탭 정지)이 둘째 줄 시작과 같다
-    _, hang, size = CHOICE[fid]
-    return p_xml(pp, f'<hp:run charPrIDRef="{cp}"><hp:t>{CIRC[n]}<hp:tab width="{hang - round(HANGUL_EM * size * 100)}" leader="0" type="1"/>{escape(body)}</hp:t></hp:run>')
+def choice_xml(pp, cp, n, body, ch):  # 원문자 + 탭 + 본문. 탭이 끝나는 곳(탭 정지)이 둘째 줄 시작과 같다
+    return p_xml(pp, f'<hp:run charPrIDRef="{cp}"><hp:t>{CIRC[n]}<hp:tab width="{ch["hang"] - round(HANGUL_EM * ch["size"] * 100)}" leader="0" type="1"/>{escape(body)}</hp:t></hp:run>')
 
 
 # ---------- 헤더: 기존 모양을 복제해 목록 끝에 더한다(같은 설정은 한 번만) ----------
-def item_count(xml, tag): return int(re.search(rf'<hh:{tag} itemCnt="(\d+)"', xml).group(1))
-
-
-def clone(xml, tag, base, new_id):
-    return re.search(rf'<hh:{tag} id="{base}" .*?</hh:{tag}>', xml, re.S).group(0).replace(f'id="{base}"', f'id="{new_id}"', 1)
-
-
-def add_items(xml, tag, n, new):  # 새 항목을 목록 끝에 붙이고 itemCnt 를 맞춘다(G38)
-    if not new: return xml
-    return xml.replace(f'</hh:{tag}>', ''.join(x for _, x in new.values()) + f'</hh:{tag}>', 1).replace(f'<hh:{tag} itemCnt="{n}">', f'<hh:{tag} itemCnt="{n + len(new)}">', 1)
-
-
 class CharPrs:  # 글자 모양: 높이·자간·밑줄만 바꾼 복제본
     def __init__(self, hdr): self.hdr, self.n, self.new = hdr, item_count(hdr, 'charProperties'), {}
 
@@ -245,35 +238,21 @@ def as_score(v, where):  # NaN·무한대는 범위 비교에서 걸러진다
 
 
 # ---------- XML 조립 ----------
-def auto_num(n):
-    return f'<hp:ctrl><hp:autoNum num="{n}" numType="ENDNOTE"><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="0"/></hp:autoNum></hp:ctrl>'
-
-
-def endnote(n, paras):
-    return (f'<hp:ctrl><hp:endNote number="{n}" suffixChar="41" instId="{1100000000 + n}"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" '
-            'linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">' + ''.join(paras) + '</hp:subList></hp:endNote></hp:ctrl>')
-
-
-def note_xml(n, q):
-    ans = CIRC[q['answer'] - 1]
-    nt = q['note']
+def note_xml(n, q, part):  # 미주 본문 틀(answer-note)의 자리를 채운다. 출제 포인트·해설은 빈 글이면 글 없는 run 이 되도록 run 째로 넘긴다
+    nt, row = q['note'], part.cp('row')
     others = [c for i, c in enumerate(CIRC) if i != q['answer'] - 1]
-    first = p_xml(0, f'<hp:run charPrIDRef="0">{auto_num(n)}<hp:t> </hp:t></hp:run><hp:run charPrIDRef="39"><hp:t>정답 {ans}   [{q["score"]:.1f}점]</hp:t></hp:run>')
-    return endnote(n, [first, para(47, [(40, '출제 포인트  '), (0, nt['point'])]), para(47, [(40, '정답 해설  '), (0, nt['why'])]), para(48, [(40, '오답 분석')])]
-                   + [para(49, [(0, f'{c} {w}')]) for c, w in zip(others, nt['wrong'])] + [para(49, [(0, '')])])
+    return part.body(dict(n=str(n), inst=str(1100000000 + n), ans=CIRC[q['answer'] - 1], score=f'{q["score"]:.1f}', point_run=run_xml(row, nt['point']), why_run=run_xml(row, nt['why']),
+                          **{f'wrong{i}': escape(f'{c} {w}') for i, (c, w) in enumerate(zip(others, nt['wrong']), 1)}))
 
 
-def fill_cell(snippet, paras, counter):
-    """조각 표의 첫 칸을 새 문단으로 채우고 표 id·zOrder·높이를 새로 매긴다.
+def fill_cell(part, paras, counter):
+    """보기 상자 부품의 칸을 새 문단으로 채우고 표 id·zOrder·높이를 새로 매긴다.
     조각의 높이는 원본 내용 기준이라 그대로 두면 빈 공간이 생기므로 줄 수로 어림한다.
     shortcut: 글자 수로 어림한 줄 수라 한컴이 다시 계산한 높이와 조금 다를 수 있다."""
-    xml = (ROOT / 'assets/snippets' / snippet).read_text(encoding='utf8')
-    m = list(re.finditer(r'(<hp:subList\b[^>]*>)(.*?)(</hp:subList>)', xml, re.S))[0]
-    assert '{{본문}}' not in xml[:m.start(2)] + xml[m.end(2):], f'{snippet}: 채우지 않은 자리표시자가 남았습니다'
-    xml = xml[:m.start(2)] + ''.join(paras) + xml[m.end(2):]
+    xml = part.body({'본문': ''.join(paras)})
     xml = re.sub(r'(<hp:tbl id=")\d+(")', rf'\g<1>{1000000000 + counter}\2', xml)
     xml = re.sub(r'(<hp:tbl id="\d+" zOrder=")\d+(")', rf'\g<1>{counter - 1}\2', xml, count=1)
-    width, size, mult, fixed, extra, floor = FIT[snippet]
+    width, size, mult, fixed, extra, floor = (part.fit[k] for k in ('width', 'size', 'mult', 'fixed', 'extra', 'floor'))  # 표 높이 어림(hwpunit)
     height = max(floor, round(sum(nlines(ptext(q), size, width) * size * mult * 100 + extra for q in paras)) + fixed)
     if height > 62000:
         WARNINGS.append(f'보기 상자 하나가 추정 {height / 100:.0f}pt로 한 단(658pt)에 거의 차거나 넘습니다 — 보기 줄을 줄이세요(보기 상자는 나눌 수 없습니다)')
@@ -350,8 +329,16 @@ def prep_passage(paras, source, where, st):
     return [tuple(e) for e in out]
 
 
+def passage_ids(p):  # 지문 부품의 역할 → 모양 번호
+    return dict(norm=p.cp('body'), bold=p.cp('bold'), pp=p.pp('body'), src=(p.pp('source'), p.cp('source')), ul=p.cp('underline'), lbl=p.cp('label'), sum=p.cp('summary'))
+
+
+def bogi_ids(p):  # 보기 상자 부품의 역할 → 모양 번호
+    return dict(norm=p.cp('line_poem'), bold=p.cp('bold'), pp=p.pp('line_poem'), pp_prose=p.pp('line_prose'), label=(p.pp('label'), p.cp('label')), src=(p.pp('source'), p.cp('source')), ul=p.cp('underline'))
+
+
 def passage_paras(parts, b, CP, after_passage, where):
-    """prep_passage 결과를 지문 문단 XML 목록으로 만든다(b: IDS[fid]['box'])."""
+    """prep_passage 결과를 지문 문단 XML 목록으로 만든다(b: passage_ids 결과)."""
     sum_ul = lambda: CP.get(b['sum'], underline=True)
     blank = para(b['pp'], [(b['norm'], '')])
     ps = []
@@ -409,7 +396,7 @@ def check_question(it, qw):
 
 
 def bogi_paras(bg, qw, g):
-    """〈보기〉 항목을 검사해 상자 안 문단 XML 목록을 만든다(g: IDS[fid]['bogi'])."""
+    """〈보기〉 항목을 검사해 상자 안 문단 XML 목록을 만든다(g: bogi_ids 결과)."""
     if not isinstance(bg, dict) or not isinstance(bg.get('lines'), list) or not bg['lines']:
         fail(f'{qw}.bogi: {{"lines": ["…", …]}} 꼴이어야 합니다(칸이 있는 표는 지원하지 않으니 줄글로 적습니다)')
     check_keys(bg, 'bogi', f'{qw}.bogi')
@@ -419,7 +406,7 @@ def bogi_paras(bg, qw, g):
     for j, x in enumerate(bg['lines'], 1):
         lw = f'{qw}.bogi.lines[{j}]'; x = text(x, lw, markup=True)
         ls.append(marked(' ' + x.lstrip(' ') if bstyle == 'prose' and x else x, g['norm'], g['bold'], g['ul'], lw))
-    lpp = 55 if bstyle == 'prose' else g['pp']  # 골든 C: 시 보기는 첫 줄 들여쓰기(pp85), 산문 보기는 들여쓰기 없는 문단(pp55)+첫머리 공백
+    lpp = g['pp_prose'] if bstyle == 'prose' else g['pp']  # 골든 C: 시 보기는 첫 줄 들여쓰기, 산문 보기는 들여쓰기 없는 문단+첫머리 공백
     ps = [para(g['label'][0], [(g['label'][1], '〈 보 기 〉')])] + [para(lpp, r) for r in ls]
     src = source_text(bg.get('source'), f'{qw}.bogi.source')
     if src is not None: ps.append(para(g['src'][0], [(g['src'][1], drop_bullet(src, f'{qw}.bogi.source'))]))
@@ -455,20 +442,25 @@ def pick_format(spec):
 
 def build(spec):
     check_keys(spec, 'top', '최상위')
-    f = pick_format(spec); fid = f['id']
-    I = IDS[fid]; items = spec.get('items')
+    f = pick_format(spec); items = spec.get('items')
     if not isinstance(items, list) or not items: fail('items에 항목이 하나 이상 있어야 합니다')
-    hdr = zipfile.ZipFile(ROOT / f'assets/templates/exam_template_{fid}.hwpx').read('Contents/header.xml').decode('utf-8')
-    CP, PP = CharPrs(hdr), ParaPrs(hdr)
+    qt = f.get('question_types') or []
+    if not qt or set(qt) - {'choice5'}: fail(f'이 스크립트가 모르는 문항 형식입니다: {", ".join(map(str, qt)) or "(없음)"}')
+    reg = CM.Registry(ROOT, f)
+    hdr = reg.resolve(zipfile.ZipFile(ROOT / 'assets/templates' / f['template']).read('Contents/header.xml').decode('utf-8'))  # 부품 모양을 헤더에 한 번에 맞춘다
+    CP, PP, cg = CharPrs(hdr), ParaPrs(hdr), choice_geom(hdr, reg.parts['choice'])
     gs = spec.get('group_start', 'column')
     if gs not in ('column', 'page', 'flow'): fail('group_start는 "column"(기본, 지문 묶음을 새 단 맨 위에서)·"page"(새 쪽 맨 위에서)·"flow"(나눔 없음) 중 하나입니다')
     fs = 10  # 본문 글자 크기(pt)
-    blank = para(0, [(0, '')]); out = [blank]  # 제목 다음 빈 문단
-    gap = lambda: para(PP.get(0, kwn=1), [(31, '')])  # 안내문 뒤 빈 줄은 글자 3pt(골든 charPr 31)
+    bl = reg.use('blank'); blank = para(bl.pp('line'), [(bl.cp('line'), '')]); out = [blank]  # 제목 다음 빈 문단
+
+    def gap():  # 안내문 뒤 빈 줄은 글자 3pt
+        g = reg.use('gap'); return para(PP.get(g.pp('line'), kwn=1), [(g.cp('line'), '')])
+
     tl = spec.get('title'); ntitle = len(tl) if isinstance(tl, list) and tl else 1
     # segs/starts: 나눔으로 갈린 구간마다의 어림 높이(pt)와 그 구간이 새 쪽·단 어느 쪽에서 시작하는지
     st = dict(q=0, scores=[], tbl=0, blanks=1, cbrk=0, pbrk=0, bogi=0, passage=0, sub=0, src=0, answers=[], tight=[], gbrk=0, gs=gs, ninstr=0, pp=PP, cp=CP,
-              segs=[24.0 * ntitle + 16.0], starts=['page'], brk=None)
+              segs=[24.0 * ntitle + 16.0], starts=['page'], brk=None, reg=reg, hdr=hdr)
     after_instr = gap_done = False  # 안내문 바로 다음 자리인가 / 그 자리에 3pt 빈 줄을 이미 넣었는가
     last_t = None
 
@@ -503,7 +495,7 @@ def build(spec):
             tx = '※ ' + core.strip()
             if not tx.endswith('물음에 답하시오.'): WARNINGS.append(f'{where}: 안내문이 `…물음에 답하시오.`로 끝나지 않습니다(골든: ※ 다음 글을 읽고 물음에 답하시오.)')
             if re.match(r'\s*' + RANGE, tx0): WARNINGS.append(f'{where}: 안내문 앞 문제 번호 범위를 지우고 `※`를 붙였습니다')
-            ix = para(PP.get(I['instr'][0], kwn=1), [(I['instr'][1], tx)])
+            ip = reg.use('instruction'); ix = para(PP.get(ip.pp('line'), kwn=1), [(ip.cp('line'), tx)])
             if st['ninstr'] and gs != 'flow' and not st['brk']:  # 첫 묶음 말고는 지문 묶음이 단(쪽) 맨 위에서 시작한다(G41)
                 st['brk'] = 'columnBreak' if gs == 'column' else 'pageBreak'; st['gbrk'] += 1
             st['ninstr'] += 1
@@ -515,7 +507,7 @@ def build(spec):
             paras = it.get('paras')
             if not isinstance(paras, list) or not paras: fail(f'{where}.paras: 문단 문자열의 목록이어야 합니다')
             parts = prep_passage(paras, source_text(it.get('source'), f'{where}.source'), where, st)
-            ps = passage_paras(parts, I['box'], CP, prev_t == 'passage', where)
+            ps = passage_paras(parts, passage_ids(reg.use('passage')), CP, prev_t == 'passage', where)
             st['passage'] += 1; st['src'] += sum(kd == 'src' for kd, _, _ in parts)
             for x in ps: emit(x, nlines(re.sub(r'<[^>]+>', '', ptext(x)), 10, COLW - 11.3) * 16.0)  # 문단 테두리 지문: 문단마다 10pt×160%, 테두리 안쪽 여백 위아래 11.3pt
             st['segs'][-1] += 11.3
@@ -524,7 +516,7 @@ def build(spec):
             stem, ch, q = check_question(it, qw); sc = q['score']
             st['scores'].append(sc)
             st['answers'].append(q['answer'])
-            spid, stcp, negcp = I['stem']; spid = PP.get(spid, kwn=1, kl=1)  # G40: 발문~④는 다음 문단과 함께, 모든 문단은 줄 단위로 쪼개지지 않게
+            stp = reg.use('stem'); spid, stcp, negcp = PP.get(stp.pp('stem'), kwn=1, kl=1), stp.cp('stem'), stp.cp('negation')  # G40: 발문~④는 다음 문단과 함께, 모든 문단은 줄 단위로 쪼개지지 않게
             tag = f' [{sc:.1f}점]'
             pieces, pos = [], 0
             for m in NEG.finditer(stem):  # 부정 낱말은 모두 굵게+밑줄(G15)
@@ -532,25 +524,25 @@ def build(spec):
             pieces = [p for p in pieces if p[1]] + [(stcp, stem[pos:] + tag)]
             c, x = pieces[-1]
             sh = nlines(stem + tag, fs, COLW - 16) * 12.5 + 12.0
-            emit(p_xml(spid, ''.join(run_xml(c_, x_) for c_, x_ in pieces[:-1]) + f'<hp:run charPrIDRef="{c}"><hp:t>{escape(x)}</hp:t>{note_xml(n, q)}<hp:t/></hp:run>'), sh)
+            emit(p_xml(spid, ''.join(run_xml(c_, x_) for c_, x_ in pieces[:-1]) + f'<hp:run charPrIDRef="{c}"><hp:t>{escape(x)}</hp:t>{note_xml(n, q, reg.use("note"))}<hp:t/></hp:run>'), sh)
             if 'bogi' in it:
-                ps = bogi_paras(it['bogi'], qw, I['bogi'])
-                st['tbl'] += 1; st['bogi'] += 1; bx, bh = fill_cell(I['snippet'], ps, st['tbl'])
+                bp = reg.use('bogi'); ps = bogi_paras(it['bogi'], qw, bogi_ids(bp))
+                st['tbl'] += 1; st['bogi'] += 1; bx, bh = fill_cell(bp, ps, st['tbl'])
                 bx = re.sub(r'paraPrIDRef="(\d+)"', lambda m_: f'paraPrIDRef="{PP.get(int(m_.group(1)), kwn=1)}"', bx, count=1)  # 보기 상자도 다음 문단과 함께
                 emit(bx, bh / 100 + 2.8)
-            pp, cp = I['choice']; left_, hang_, _ = CHOICE[fid]; tabid = PP.tab(left_ + hang_)
+            cpt = reg.use('choice'); pp, cp = cpt.pp('choice'), cpt.cp('choice'); tabid = PP.tab(cg['left'] + cg['hang'])
             lh, aft = 12.5, 1.5
             for i, c_ in enumerate(ch):
-                sp, nl, stuck = tighten(c_, fid)
+                sp, nl, stuck = tighten(c_, cg)
                 if sp: st['tight'].append((n, i + 1, sp))
                 elif stuck: WARNINGS.append(f'{qw}.choices[{i + 1}]: 마지막 줄에 한 글자만 남는데 자간을 -7%까지 줄여도 안 됩니다 — 문구를 줄이세요')
                 cpp = PP.get(pp, kwn=1 if i < 4 else 0, kl=1, tab=tabid)  # ⑤에서 문항 사슬을 끊는다
-                emit(choice_xml(cpp, CP.get(cp, spacing=sp) if sp else cp, i, c_, fid), nl * lh + aft)
+                emit(choice_xml(cpp, CP.get(cp, spacing=sp) if sp else cp, i, c_, cg), nl * lh + aft)
     # 정답과 해설 제목(G35): 미주가 시작하는 쪽 맨 위에 13pt 굵게. 제목 문단이 스스로 새 쪽을 연다
     pb, st['brk'] = st['brk'], None
     if pb == 'columnBreak': WARNINGS.append('맨 끝 column_break는 쓰이지 않습니다 — 정답과 해설 제목이 새 쪽을 엽니다'); st['cbrk'] -= 1
     st['starts'].append('page'); st['segs'].append(22.4)
-    out.append(para(0, [(CP.get(I['head'], height=1300), '정답과 해설')]).replace('pageBreak="0"', 'pageBreak="1"', 1))
+    hd = reg.use('heading'); out.append(para(hd.pp('heading'), [(CP.get(hd.cp('heading'), height=1300), '정답과 해설')]).replace('pageBreak="0"', 'pageBreak="1"', 1))
     if st['q'] == 0: fail('question(문항)이 하나도 없습니다')
     if st['q'] >= 5 and max(st['answers'].count(a) for a in set(st['answers'])) > 0.4 * st['q']:
         WARNINGS.append('정답 번호가 한쪽으로 쏠려 있습니다(한 번호가 40% 초과) — 의도한 것인지 확인하세요')
@@ -567,7 +559,7 @@ def stamp(hpf, title):  # 제목과 만든 날짜를 content.hpf 에 적는다(�
     return hpf
 
 
-def main(src, dst):
+def main(src, dst, parts=False):
     try:
         spec = json.loads(Path(src).read_text(encoding='utf-8-sig'))
     except FileNotFoundError: fail(f'입력 파일이 없습니다: {src}')
@@ -579,16 +571,16 @@ def main(src, dst):
     if not isinstance(spec, dict): fail('JSON 최상위는 {"format": …, "title": …, "items": […]} 꼴이어야 합니다')
     if Path(src).resolve() == Path(dst).resolve(): fail('출력 파일이 입력 JSON과 같은 경로입니다(입력이 덮어써집니다)')
     if not str(dst).lower().endswith('.hwpx'): WARNINGS.append('출력 파일 확장자가 .hwpx가 아닙니다 — 한글에서 열리지 않을 수 있습니다')
-    f, body, st = build(spec); fid = f['id']
+    f, body, st = build(spec); reg = st['reg']
     title = spec.get('title')
     if isinstance(title, str): title = [title]
     if not isinstance(title, list) or not title or not all(isinstance(x, str) and x.strip() for x in title): fail('title은 한 줄 이상의 글(문자열) 목록이어야 합니다')
     title = [text(x, f'title[{i}]').strip() for i, x in enumerate(title, 1)]
     if len(title) > 3: fail('제목은 최대 3줄입니다')
-    tpl = zipfile.ZipFile(ROOT / f'assets/templates/exam_template_{fid}.hwpx')
+    tpl = zipfile.ZipFile(ROOT / 'assets/templates' / f['template'])
     sec = tpl.read('Contents/section0.xml').decode().replace('시험 제목', escape(title[0]))
     sec = re.sub(r'^<\?xml[^>]*\?>\s*', '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>', sec)  # 한컴이 저장하는 선언 형식
-    extra = ''.join(para(IDS[fid]['title'][0], [(IDS[fid]['title'][1], x)]) for x in title[1:])  # 둘째 줄부터
+    tp = reg.use('title'); extra = ''.join(para(tp.pp('line'), [(tp.cp('line'), x)]) for x in title[1:])  # 둘째 줄부터
     sec = sec.replace('</hs:sec>', extra + body + '</hs:sec>')
     ET.fromstring(sec.encode())  # well-formed 확인
     try:
@@ -598,15 +590,16 @@ def main(src, dst):
                 data = tpl.read(it.filename)
                 if it.filename == 'Contents/section0.xml': data = sec.encode()
                 elif it.filename == 'Contents/content.hpf': data = stamp(data.decode(), title).encode()
-                elif it.filename == 'Contents/header.xml': data = st['pp'].apply(st['cp'].apply(data.decode('utf-8'))).encode('utf-8')
+                elif it.filename == 'Contents/header.xml': data = st['pp'].apply(st['cp'].apply(st['hdr'])).encode('utf-8')  # 부품 모양을 맞춘 헤더에 더한다
                 zo.writestr(it.filename, data, compress_type=zipfile.ZIP_STORED if it.filename == 'mimetype' else zipfile.ZIP_DEFLATED)
     except OSError as e: fail(f'{dst}: 저장할 수 없습니다({e.strerror})')
     print(f'{dst}: {f["title"]}({f["id"]}) | 지문 {st["passage"]}개(소제목 {st["sub"]}, 출처줄 {st["src"]}) | 문항 {st["q"]}개 | 보기 {st["bogi"]}개 | 배점 합 {sum(st["scores"]):.1f}점 | 빈 문단 {st["blanks"]}개 | 단 나눔 {st["cbrk"] + (st["gbrk"] if st["gs"] == "column" else 0)}개·쪽 나눔 {st["pbrk"] + (st["gbrk"] if st["gs"] == "page" else 0)}개(묶음 시작 자동 {st["gbrk"]}개 포함)')
+    if parts: print('쓴 부품: ' + ', '.join(reg.used()))
     if st.get('pages'): print(f'쪽별 추정 높이(pt, 어림 ±10%; 한 단 {BODY:.0f}, 단 나눔 없는 쪽은 두 단에 걸쳐 흐름): ' + ' | '.join(f'{n_}쪽 ' + ' / '.join(f'{h_:.0f}' for h_ in hs_) for n_, hs_ in enumerate(st['pages'], 1)))
     if st['tight']: print('자간 줄임(선택지 마지막 줄에 한 글자만 남는 것을 막음): ' + ', '.join(f'문항 {q}-{CIRC[c - 1]} {sp}%' for q, c, sp in st['tight']))
     for w in WARNINGS: print('경고:', w)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3 or sys.argv[1] in ('-h', '--help'): raise SystemExit(USAGE)
-    main(*sys.argv[1:])
+    if len(sys.argv) not in (3, 4) or sys.argv[1] in ('-h', '--help') or (len(sys.argv) == 4 and sys.argv[3] != '--parts'): raise SystemExit(USAGE)
+    main(*sys.argv[1:3], parts=len(sys.argv) == 4)

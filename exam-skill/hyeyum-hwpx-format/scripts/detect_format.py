@@ -34,7 +34,7 @@ def main(argv):
         print(f'오류: {argv[0]}: {e}', file=sys.stderr); return 1
     scores = []
     for f in formats:
-        tpl = ROOT / f'assets/templates/exam_template_{f["id"]}.hwpx'
+        tpl = ROOT / 'assets/templates' / f['template']
         if not tpl.exists(): continue
         tp, tc = signature(V, tpl)
         scores.append(((jaccard(fp, tp) + jaccard(fc, tc)) / 2, f))
