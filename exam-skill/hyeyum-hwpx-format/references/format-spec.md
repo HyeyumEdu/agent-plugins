@@ -56,7 +56,7 @@
 | G46 | 구분 문단 앞 빈 줄 | 지문의 구분 문단(`(나)`~ 머리, 줄거리 표시) 앞에는 빈 줄 정확히 1개, 첫 문단 앞에는 없음. 빈 줄은 지문 문단 모양이다<!-- format:basic -->(`basic`은 문단 테두리 `pp32`라야 상자가 끊기지 않는다)<!-- /format --> | `hp:p` |
 | G47 | 줄거리 표시 | `줄거리` 표시는 대괄호 `[…줄거리]`로 묶고 **9pt**(요약까지). 괄호 없는 `줄거리 |`는 위반 | `charPr` |
 | G49 | 선택지 번호 뒤 간격 | 원문자 바로 뒤에 **탭 1개**, 탭 정지 = `left+abs(intent)`(둘째 줄 시작과 같은 위치) — 첫 줄 본문 시작 = 둘째 줄 시작이고 선택지마다 같다(5.1절). `--lenient`에서는 건너뜀 | `hp:tab`, `tabPr` |
-| G50 | 부품 모양 일치 | 본문(중첩 표·미주 포함)의 모든 문단·글자 모양과 표·칸 테두리가 기본 형식 부품(`assets/components/`)에 등록된 모양과 같다. 문단의 `keepWithNext`·`keepLines`·`tabPrIDRef`와 글자의 `height`·`spacing`·`underline` 같은 변형 속성은 보지 않고, 구역 설정이 든 첫 문단(템플릿 몫)은 건너뛴다. 엄격 검사에서 어긋나면 FAIL. `--lenient`에서는 건너뜀 | `paraPrIDRef`, `charPrIDRef`, `borderFillIDRef` |
+| G50 | 부품 모양 일치 | 본문(중첩 표·미주 포함)의 모든 문단·글자 모양과 표·칸 테두리가 기본 형식 부품(`assets/components/`)에 등록된 모양과 같다. 문단의 `keepWithNext`·`keepLines`·`tabPrIDRef`와 글자의 `height`·`spacing`·`underline` 같은 변형 속성은 보지 않고, 구역 설정이 든 첫 문단(템플릿 몫)은 건너뛴다. 어긋나면 WARN(에이전트가 도구로 덧붙인 등록되지 않은 서식이라 마지막 응답에 알린다), 부품을 읽지 못하면 FAIL. `--lenient`에서는 건너뜀 | `paraPrIDRef`, `charPrIDRef`, `borderFillIDRef` |
 
 줄 나눔 이름은 직관과 반대다: `breakNonLatinWord="KEEP_WORD"`가 **글자 단위**, `BREAK_WORD`가 **어절 단위**. 본문·선택지·발문은 `KEEP_WORD`. 가운데·오른쪽 정렬한 제목·출처줄은 대체로 `BREAK_WORD`다(`〈 보 기 〉` 라벨 같은 일부 가운데·오른쪽 문단은 `KEEP_WORD`).
 

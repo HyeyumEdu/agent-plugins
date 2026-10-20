@@ -15,7 +15,7 @@ ln = lambda e: e.tag.rsplit('}', 1)[-1]
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견준다. 부품을 읽지 못하면 트레이스백 대신 오류 글을 돌려준다
+def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견준다. 반환 (부품에 없는 모양들, 부품을 읽지 못한 이유 또는 None)
     # shortcut: 형식이 둘 이상이면 기본 형식의 부품만 본다 — 두 번째 형식을 더할 때 --format 인수를 넣는다
     try:
         sys.dont_write_bytecode = True
@@ -23,10 +23,10 @@ def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견�
         cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
         fs = json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
         fmt = next((f for f in fs if f.get('default')), fs[0] if len(fs) == 1 else None)
-        if fmt is None: return ['기본 형식(formats.json 의 default)을 정할 수 없습니다']
-        return cm.shape_problems(cm.Registry(ROOT, fmt), d.hd, d.sec)
-    except SystemExit as e: return [f'부품을 읽지 못했습니다({str(e.code).replace("오류: ", "", 1)})']
-    except (OSError, ValueError, KeyError, IndexError, TypeError) as e: return [f'부품을 읽지 못했습니다({type(e).__name__}: {e})']
+        if fmt is None: return [], '기본 형식(formats.json 의 default)을 정할 수 없습니다'
+        return cm.shape_problems(cm.Registry(ROOT, fmt), d.hd, d.sec), None
+    except SystemExit as e: return [], f'부품을 읽지 못했습니다({str(e.code).replace("오류: ", "", 1)})'
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e: return [], f'부품을 읽지 못했습니다({type(e).__name__}: {e})'
 
 
 def ttext(t):  # hp:t 의 글. <hp:nbSpace/> 같은 자식 요소 뒤의 글(tail)도 읽는다
@@ -384,8 +384,8 @@ def rules(d, lenient=False):
                and it_ is not None and int(it_.get('pos')) == pr['L'] + abs(pr['F']) and pr['F'] < 0)
         if not ok_: bad49.append(d.txt(p_)[:8])
     add('G49', '선택지: 원문자 바로 뒤에 탭 1개, 탭 정지 = left+|intent| (첫 줄 본문 시작 = 둘째 줄 시작, 번호 뒤 간격이 선택지마다 같음)' + ('(원본 검사: 골든은 공백이라 건너뜀)' if lenient else ''), lenient or not bad49, f'위반 {len(bad49)}개 {bad49[:3]}')
-    p50 = [] if lenient else shape_check(d)
-    add('G50', '본문 문단·글자·표 테두리 모양이 모두 등록된 부품의 모양과 같음' + ('(원본 검사는 건너뜀)' if lenient else ''), not p50, p50[:3])
+    p50, e50 = ([], None) if lenient else shape_check(d)  # 부품 밖 모양은 에이전트가 도구로 덧붙인 서식이라 막지 않고 알린다(WARN). 부품을 못 읽으면 설치 문제라 FAIL
+    add('G50', '본문 문단·글자·표 테두리 모양이 모두 등록된 부품의 모양과 같음(다르면 등록되지 않은 서식이 들어간 것)' + ('(원본 검사는 건너뜀)' if lenient else ''), False if e50 else (None if p50 else True), [e50] if e50 else p50[:3])
     sizes = Counter(d.size(c) for p in d.body for t, c in d.runs(p) if t.strip() and not d.inside(p, 'endNote'))
     add('V1', '본문 글자 크기(보고용)', True, dict(sizes.most_common(3)))
     add('V5', '선택지 줄간격(보고용)', True, sorted({p['ls'] for p in cps}))

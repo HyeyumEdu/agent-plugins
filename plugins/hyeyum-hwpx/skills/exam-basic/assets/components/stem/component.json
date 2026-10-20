@@ -1,0 +1,31 @@
+{
+  "id": "stem",
+  "name": "발문",
+  "desc": "번호·배점이 붙는 발문과 굵게+밑줄 부정 낱말",
+  "kind": "para",
+  "roles": {
+    "stem": {
+      "pp": 62,
+      "cp": 37
+    },
+    "negation": {
+      "cp": 38
+    }
+  },
+  "slots": {},
+  "fit": {},
+  "rules": [
+    "G9",
+    "G10",
+    "G11",
+    "G15",
+    "G16",
+    "G21",
+    "G26",
+    "G40",
+    "G50"
+  ],
+  "used_by": [
+    "question.stem"
+  ]
+}

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """원본 exam-skill/hyeyum-hwpx-format 에서 플러그인 스킬을 만들어 plugins/hyeyum-hwpx/skills/ 에 쓴다.
-  skills/format/       형식을 아직 안 정한 요청을 받는 라우터(모든 형식·detect_format.py 포함, 형식이 둘 이상일 때만)
-  skills/<형식 id>/    형식을 고정한 전용 명령 /hyeyum-hwpx:<형식 id> (그 형식의 템플릿·예시·부품·문서 내용만)
+  skills/exam-format/      형식을 아직 안 정한 요청을 받는 라우터(모든 형식·detect_format.py 포함, 형식이 둘 이상일 때만)
+  skills/exam-<형식 id>/   형식을 고정한 전용 명령 /hyeyum-hwpx:exam-<형식 id> (그 형식의 템플릿·예시·부품·문서 내용만)
+  skills/hwpx/ 같은 HANDWRITTEN 스킬은 직접 쓰는 원본이라 지우거나 만들지 않는다.
 Claude Desktop 에서 스킬 폴더가 따로 올라갈 수 있어 각 스킬은 scripts 를 복사해 스스로 완결된다.
 문서(SKILL.md·references/*.md)의 `<!-- format:<id>[,<id>…] -->`…`<!-- /format -->` 구간은 그 id 를 가진 스킬에만 남는다.
   id 는 형식 id, `router`(라우터에만), `pinned`(전용 명령에만). 라우터는 router 와 들어간 모든 형식의 구간을 남긴다.
@@ -14,6 +15,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SRC = HERE / 'hyeyum-hwpx-format'
 PLUGIN = 'hyeyum-hwpx'
+PREFIX = 'exam-'  # 시험지 형식 스킬 이름 = PREFIX + 형식 id
+HANDWRITTEN = {'hwpx'}  # 생성하지 않는 스킬(plugins/hyeyum-hwpx/skills/ 에서 직접 고친다)
 SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py', 'scripts/components.py']
 DOCS = ['references/exam-json.md', 'references/format-spec.md']
 USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 만들거나 기존 시험지를 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
@@ -42,16 +45,17 @@ def build(out, include_all=False):
     if not include_all: formats = [f for f in formats if f.get('plugin', True)]
     router = len(formats) > 1  # 형식이 하나면 고를 것이 없다
     body = re.match(r'---\n.*?\n---\n(.*)', (SRC / 'SKILL.md').read_text(encoding='utf-8'), re.S).group(1)
-    if out.exists(): shutil.rmtree(out)
+    for p in (out.iterdir() if out.exists() else []):
+        if p.name not in HANDWRITTEN: shutil.rmtree(p) if p.is_dir() else p.unlink()
     catalog = load_catalog()
     router_desc = ('국어 5지선다 시험지를 한글(.hwpx) 파일로 만들 때, 어느 형식으로 만들지 정하지 않았거나 올린 시험지 파일에서 형식을 알아내야 할 때 쓴다. '
                    '시험지·문제지·중간·기말고사·모의고사, 보기 상자, 정답·해설 미주, 기존 시험지 서식 정리. 등록된 형식: '
-                   + ', '.join(f'{f["title"]}(/{PLUGIN}:{f["id"]})' for f in formats) + f'. {EXCLUDE}')
-    skills = [dict(id='format', desc=router_desc, ids={'router'} | {f['id'] for f in formats}, formats=formats, extra=['scripts/detect_format.py'])] if router else []
+                   + ', '.join(f'{f["title"]}(/{PLUGIN}:{PREFIX}{f["id"]})' for f in formats) + f'. {EXCLUDE}')
+    skills = [dict(id=PREFIX + 'format', desc=router_desc, ids={'router'} | {f['id'] for f in formats}, formats=formats, extra=['scripts/detect_format.py'])] if router else []
     for f in formats:
         desc = (f'{USE} {f["title"]}: {f["when"]}. {f["traits"]}. '
-                + ((f'다른 형식이 필요하면 /{PLUGIN}:format. ' if f.get('default') else f'형식이 다르거나 정해지지 않았으면 /{PLUGIN}:format. ') if router else '') + EXCLUDE)
-        skills.append(dict(id=f['id'], desc=desc, ids={'pinned', f['id']}, formats=[f], extra=[]))
+                + ((f'다른 형식이 필요하면 /{PLUGIN}:{PREFIX}format. ' if f.get('default') else f'형식이 다르거나 정해지지 않았으면 /{PLUGIN}:{PREFIX}format. ') if router else '') + EXCLUDE)
+        skills.append(dict(id=PREFIX + f['id'], desc=desc, ids={'pinned', f['id']}, formats=[f], extra=[]))
     for s in skills:
         d = out / s['id']
         for rel in SCRIPTS + s['extra']: copy(rel, d)

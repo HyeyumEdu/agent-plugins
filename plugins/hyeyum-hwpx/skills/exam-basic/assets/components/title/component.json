@@ -1,0 +1,22 @@
+{
+  "id": "title",
+  "name": "제목",
+  "desc": "시험지 제목 줄(가운데, 15pt 굵게)",
+  "kind": "para",
+  "roles": {
+    "line": {
+      "pp": 61,
+      "cp": 53
+    }
+  },
+  "slots": {},
+  "fit": {},
+  "rules": [
+    "G7",
+    "G8",
+    "G50"
+  ],
+  "used_by": [
+    "title"
+  ]
+}
