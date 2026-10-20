@@ -1,5 +1,5 @@
 {
-  "kind": "C",
+  "format": "basic",
   "title": ["예시고2", "문학과 독서", "2026-2학기 1차"],
   "items": [
     {"type": "instruction", "text": "※ 다음 글을 읽고 물음에 답하시오."},

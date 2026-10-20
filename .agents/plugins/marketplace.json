@@ -1,11 +1,19 @@
 {
   "name": "hyeyum",
-  "interface": { "displayName": "혜윰 교사용 플러그인" },
+  "interface": {
+    "displayName": "혜윰학원 에이전트 플러그인"
+  },
   "plugins": [
     {
       "name": "hyeyum-hwpx",
-      "source": { "source": "local", "path": "./plugins/hyeyum-hwpx" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "source": {
+        "source": "local",
+        "path": "./plugins/hyeyum-hwpx"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
       "category": "Productivity"
     }
   ]

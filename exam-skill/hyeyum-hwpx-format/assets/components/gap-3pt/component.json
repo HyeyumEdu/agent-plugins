@@ -1,0 +1,22 @@
+{
+  "id": "gap-3pt",
+  "name": "3pt 빈 줄",
+  "desc": "안내문과 지문 사이 글자 3pt 빈 문단(자동)",
+  "kind": "para",
+  "roles": {
+    "line": {
+      "pp": 0,
+      "cp": 31
+    }
+  },
+  "slots": {},
+  "fit": {},
+  "rules": [
+    "G37",
+    "G41",
+    "G50"
+  ],
+  "used_by": [
+    "instruction(자동)"
+  ]
+}

@@ -1,8 +1,9 @@
-"""HWPX 시험지가 references/format-spec.md 의 규칙(G1~G49, V1·V5·V9)을 지키는지 XML 로 검사한다(표준 라이브러리만).
+"""HWPX 시험지가 references/format-spec.md 의 규칙(G1~G50, V1·V5·V9)을 지키는지 XML 로 검사한다(표준 라이브러리만).
 기본은 엄격 모드(새로 만든 시험지용). --lenient 는 한컴이 저장한 원본처럼 작은 예외가 있는 파일용.
 출력: 규칙 ID, PASS/FAIL/WARN, 설명, 측정값. 종료 코드: FAIL·열 수 없는 파일이 있으면 1, 사용법 오류 2.
 shortcut: 표준 XML 파서라 출처를 모르는 파일은 검사하지 않는다(직접 만든·받은 시험지만), 필요하면 defusedxml 로 바꾼다."""
-import re, sys, unicodedata, zipfile, zlib
+import importlib.util, json, re, sys, unicodedata, zipfile, zlib
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from collections import Counter
 
@@ -11,6 +12,21 @@ P = '{http://www.hancom.co.kr/hwpml/2011/paragraph}'
 C = '{http://www.hancom.co.kr/hwpml/2011/core}'
 USAGE = '사용: python3 verify_exam.py [--lenient] 파일.hwpx [파일2.hwpx ...]'
 ln = lambda e: e.tag.rsplit('}', 1)[-1]
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견준다. 부품을 읽지 못하면 트레이스백 대신 오류 글을 돌려준다
+    # shortcut: 형식이 둘 이상이면 기본 형식의 부품만 본다 — 두 번째 형식을 더할 때 --format 인수를 넣는다
+    try:
+        sys.dont_write_bytecode = True
+        spec = importlib.util.spec_from_file_location('components', Path(__file__).with_name('components.py'))
+        cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
+        fs = json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
+        fmt = next((f for f in fs if f.get('default')), fs[0] if len(fs) == 1 else None)
+        if fmt is None: return ['기본 형식(formats.json 의 default)을 정할 수 없습니다']
+        return cm.shape_problems(cm.Registry(ROOT, fmt), d.hd, d.sec)
+    except SystemExit as e: return [f'부품을 읽지 못했습니다({str(e.code).replace("오류: ", "", 1)})']
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e: return [f'부품을 읽지 못했습니다({type(e).__name__}: {e})']
 
 
 def ttext(t):  # hp:t 의 글. <hp:nbSpace/> 같은 자식 요소 뒤의 글(tail)도 읽는다
@@ -183,7 +199,7 @@ def rules(d, lenient=False):
     add('G16', '발문 문단: JUSTIFY KEEP_WORD', all(p['al'] == 'JUSTIFY' and p['brk'] == 'KEEP_WORD' for p in ps), sorted({(p['ls'], p['B'], p['A']) for p in ps}))
     top = [t for t in d.sec.iter(P + 'tbl') if not d.inside(t, 'tbl')]
     boxes = [t for t in top if (t.get('rowCnt'), t.get('colCnt')) in (('1', '1'), ('3', '3'))]
-    add('G17', '문서 최상위 표는 모두 상자(1x1, 보기는 1x1 또는 3x3)', len(boxes) == len(top), f'{len(boxes)}/{len(top)}')
+    add('G17', '문서 최상위 표는 모두 상자(1x1, 원본의 [A] 구간 표시는 3x3)', len(boxes) == len(top), f'{len(boxes)}/{len(top)}')
     ens_all = list(d.sec.iter(P + 'endNote')); ens_q = [next(d.body[i].iter(P + 'endNote'), None) for i in st]
     add('G18', '미주 본문 첫 문단 = 자동번호 + 정답', all(e.find('.//' + P + 'p') is not None and 'autoNum' in ET.tostring(e.find('.//' + P + 'p'), encoding='unicode') and re.search(r'[①-⑤]', ''.join(e.itertext())) for e in ens_all), len(ens_all))
     # ---- 띄어쓰기·자간 ----
@@ -258,21 +274,20 @@ def rules(d, lenient=False):
         ps_ = list(sub.findall(P + 'p')) if sub is not None else []
         if not ps_: kinds['기타'] += 1; continue
         t0 = d.txt(ps_[0])
-        if re.match(r'^ [①-⑤]$', t0) and len({q.get('paraPrIDRef') for q in ps_}) == 1 and len(ps_) <= 2: kinds['B형(정답 번호만)'] += 1
-        elif (len(ps_) == 9 and re.match(r'^ 정답 [①-⑤] {3}\[\d+\.\d점\]$', t0) and d.txt(ps_[1]).startswith('출제 포인트  ') and d.txt(ps_[2]).startswith('정답 해설  ')
+        if (len(ps_) == 9 and re.match(r'^ 정답 [①-⑤] {3}\[\d+\.\d점\]$', t0) and d.txt(ps_[1]).startswith('출제 포인트  ') and d.txt(ps_[2]).startswith('정답 해설  ')
               and d.txt(ps_[3]) == '오답 분석' and not d.txt(ps_[8]).strip() and all(re.match(r'^[①-⑤] ', d.txt(q)) for q in ps_[4:8])):
-            kinds['C형(정답·포인트·해설·오답분석)'] += 1
+            kinds['정답·포인트·해설·오답분석'] += 1
         else: kinds['기타'] += 1
-    add('V9', '미주 내용 형식이 B형 또는 C형 중 하나(문서 안에서 한 가지)', len(kinds) == 1 and '기타' not in kinds, dict(kinds))
+    add('V9', '미주 내용 형식이 모두 "정답·포인트·해설·오답분석"', len(kinds) == 1 and '기타' not in kinds, dict(kinds))
     last = lastp; lr = d.runs(last) if last is not None else []; hok = last is not None and d.txt(last).strip() == '정답과 해설' and all(d.bold(c) for t, c in lr if t.strip())
-    if lenient:  # 원본: 제목이 있으면 굵게 13~14pt(골든 C 14pt), 없어도 된다(골든 B)
+    if lenient:  # 원본: 제목이 있으면 굵게 13~14pt(골든 14pt), 없어도 된다
         add('G35', '`정답과 해설` 제목이 있으면 본문 맨 끝 문단에 굵게 13~14pt(원본은 없어도 됨)', not any(d.txt(p).strip() == '정답과 해설' for p in d.body) or (hok and all(13.0 <= d.size(c) <= 14.0 for t, c in lr if t.strip())), d.txt(last)[:20] if last is not None else '')
     else:
         add('G35', '본문 맨 끝 문단이 `정답과 해설`: 13pt 굵게, 쪽 맨 위(pageBreak=1) — 미주(정답·해설)가 이 쪽에서 시작', hok and all(d.size(c) == 13.0 for t, c in lr if t.strip()) and last.get('pageBreak') == '1',
             (d.txt(last)[:20], {d.size(c) for t, c in lr if t.strip()}, last.get('pageBreak')) if last is not None else '')
     bad36 = [t[:8] for p_ in chl for t, c in d.runs(p_) if t.strip() and not (rat(c) == '100' and (sp7(c) == {'0'} or is_tight(c)))]
     other = [t[:8] for p_ in d.sec.iter(P + 'p') if id(p_) not in chs for t, c in d.runs(p_) if t.strip() and not (rat(c) == '100' and sp7(c) == {'0'})]
-    add('G36', '글자 간격(자간) 조정은 선택지 글자에만, 일곱 속성 모두 같은 -1~-7%, 장평 100%' + ('(원본 검사: 선택지만 본다 — 골든 C 지문 인용 상자는 -5% 예외)' if lenient else ''),
+    add('G36', '글자 간격(자간) 조정은 선택지 글자에만, 일곱 속성 모두 같은 -1~-7%, 장평 100%' + ('(원본 검사: 선택지만 본다 — 기준 시험지의 지문 인용 상자는 -5% 예외)' if lenient else ''),
         not bad36 and (lenient or not other), f'선택지 {len(tight)}곳 {sorted(set(tight))}' + (f', 선택지 밖 위반 {len(other)}곳 {other[:2]}' if other and not lenient else '') + (f', 선택지 위반 {bad36[:2]}' if bad36 else ''))
     gbad = []
     for k in ins:  # 안내문 뒤 빈 문단은 모두 3pt·160%, 문단 테두리 지문이 빈 줄 없이 곧바로 오면 위반
@@ -291,7 +306,7 @@ def rules(d, lenient=False):
     tabids = {t_.get('id') for t_ in d.hd.iter(H + 'tabPr')}; badtab = [p_.get('id') for p_ in d.hd.iter(H + 'paraPr') if p_.get('tabPrIDRef') not in tabids]
     add('G38', '헤더의 글자·문단 모양·탭 정의 목록: itemCnt = 실제 개수, id 0부터 연속·중복 없음, 문단 모양의 tabPrIDRef 가 존재', not any(len(v) > 2 for v in cnt.values()) and not badtab, (cnt, 'tabPrIDRef 끊김', badtab[:3]))
     notchar = [t.get('rowCnt') + 'x' + t.get('colCnt') for t in d.sec.iter(P + 'tbl') if (t.find(P + 'pos') is None or t.find(P + 'pos').get('treatAsChar') != '1')]
-    add('G39', '모든 표(중첩 표 포함)는 "글자처럼 취급"(treatAsChar=1)' + ('(원본 검사: 골든 C 표 지문·일부 보기 표는 예외라 개수만 알린다)' if lenient else ''), lenient or not notchar, f'글자처럼 취급 아님 {len(notchar)}개 {sorted(set(notchar))}')
+    add('G39', '모든 표(중첩 표 포함)는 "글자처럼 취급"(treatAsChar=1)' + ('(원본 검사: 기준 시험지의 표 지문·일부 보기 표는 예외라 개수만 알린다)' if lenient else ''), lenient or not notchar, f'글자처럼 취급 아님 {len(notchar)}개 {sorted(set(notchar))}')
     # ---- 문항 보호·안내문·선택지 정렬·지문 글 규칙(G40~G49) ----
     bad40 = []
     for k, i in enumerate(st):
@@ -316,7 +331,7 @@ def rules(d, lenient=False):
     add('G41', '안내문(과 뒤 빈 줄)은 다음 문단과 함께(keepWithNext=1), 첫 묶음 말고는 지문 묶음이 새 단·쪽 맨 위에서 시작(나눔 속성)' + ('(원본 검사는 건너뜀)' if lenient else ''), True if lenient else (False if bad41 else (None if nob else True)),
         f'keepWithNext 위반 {sorted(set(bad41))[:4]}, 나눔 없는 안내문 {nob[:4]}')
     bad42 = [k + 1 for k in ins if not re.match(r'^※ (?![\[［※])\S.*물음에 답하시오\.$', d.txt(d.body[k]).strip())]
-    add('G42', '안내문은 `※ 다음 글을 읽고 물음에 답하시오.` 꼴(문제 번호 범위 `[1~3]` 금지)' + ('(원본 검사: 골든 B 는 `[1~3]`이라 건너뜀)' if lenient else ''), lenient or not bad42, f'위반 안내문 {bad42[:4]}')
+    add('G42', '안내문은 `※ 다음 글을 읽고 물음에 답하시오.` 꼴(문제 번호 범위 `[1~3]` 금지)' + ('(원본 검사: 기준 시험지에는 `[1~3]`이 있어 건너뜀)' if lenient else ''), lenient or not bad42, f'위반 안내문 {bad42[:4]}')
     all_p = [d.txt(p_) for p_ in d.sec.iter(P + 'p')]
     bad43 = [t[:12] for t in all_p if re.search(MARK + r'\s+[:：]|' + MARK + '：', t)]
     warn43 = [t[:12] for t in all_p if re.search(MARK + r':(?=\S)', t)]
@@ -369,6 +384,8 @@ def rules(d, lenient=False):
                and it_ is not None and int(it_.get('pos')) == pr['L'] + abs(pr['F']) and pr['F'] < 0)
         if not ok_: bad49.append(d.txt(p_)[:8])
     add('G49', '선택지: 원문자 바로 뒤에 탭 1개, 탭 정지 = left+|intent| (첫 줄 본문 시작 = 둘째 줄 시작, 번호 뒤 간격이 선택지마다 같음)' + ('(원본 검사: 골든은 공백이라 건너뜀)' if lenient else ''), lenient or not bad49, f'위반 {len(bad49)}개 {bad49[:3]}')
+    p50 = [] if lenient else shape_check(d)
+    add('G50', '본문 문단·글자·표 테두리 모양이 모두 등록된 부품의 모양과 같음' + ('(원본 검사는 건너뜀)' if lenient else ''), not p50, p50[:3])
     sizes = Counter(d.size(c) for p in d.body for t, c in d.runs(p) if t.strip() and not d.inside(p, 'endNote'))
     add('V1', '본문 글자 크기(보고용)', True, dict(sizes.most_common(3)))
     add('V5', '선택지 줄간격(보고용)', True, sorted({p['ls'] for p in cps}))

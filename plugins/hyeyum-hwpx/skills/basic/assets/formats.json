@@ -1,0 +1,25 @@
+[
+  {
+    "id": "basic",
+    "title": "기본 시험지",
+    "when": "형식을 따로 말하지 않으면 쓰는 기본 형식으로, 문항별 배점과 정답·해설 미주(출제 포인트·정답 해설·오답 분석)가 들어간다",
+    "traits": "지문은 문단 테두리, 〈보기〉는 1×1 표, 제목은 가운데 세 줄, 본문 10pt",
+    "default": true,
+    "template": "exam_template_basic.hwpx",
+    "parts": {
+      "title": "title",
+      "blank": "blank",
+      "gap": "gap-3pt",
+      "instruction": "instruction",
+      "passage": "passage-border",
+      "stem": "stem",
+      "bogi": "bogi-box",
+      "choice": "choice5",
+      "note": "answer-note",
+      "heading": "end-heading"
+    },
+    "question_types": [
+      "choice5"
+    ]
+  }
+]
