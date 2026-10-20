@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hyeyum-hwpx",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "혜윰학원 국어 시험지 한글 문서(HWPX)를 만드는 MCP와 스킬이에요.",
   "author": {
     "name": "JunseoKR"
