@@ -177,3 +177,20 @@ def patch_upstream() -> None:
     from hwpx_automation.core import formatting
 
     formatting._split_run = split_run
+    _keep_single_backup()
+
+
+def _keep_single_backup() -> None:
+    """백업은 `<이름>.hwpx.bak` 하나(직전 쓰기 직전 상태)만 남긴다: 업스트림의 `.bak.1`~`.bak.5` 회전을 끈다(사용자 결정 2026-10-20)."""
+    from hwpx_automation.core import transactions
+    from hwpx_automation.ops_services.save_policy import SavePolicy
+
+    # 함수 기본값 하나를 바꾸면 이름으로 가져다 쓴 호출처(handlers._shared·save_policy·ops_services.transactions)가 모두 따른다.
+    transactions.rotate_and_backup.__kwdefaults__["max_backups"] = 0
+    rotate = SavePolicy._rotate_and_backup_exact
+    if not getattr(rotate, "single_backup", False):  # 이 경로는 max_backups를 인수로 받으므로(hwpx_ops가 5를 넘김) 값을 덮어쓴다
+        def single(self: Any, target: Any, **kwargs: Any) -> Any:
+            return rotate(self, target, **{**kwargs, "max_backups": 0})
+
+        single.single_backup = True  # type: ignore[attr-defined]
+        SavePolicy._rotate_and_backup_exact = single  # type: ignore[method-assign]

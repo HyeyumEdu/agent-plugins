@@ -90,6 +90,7 @@ def test_every_tool_can_be_found_by_its_own_name_and_by_its_first_description_li
     ("서식 읽기", "hwpx_read_layout"), ("찾아 바꾸기", "search_and_replace"), ("시험지 조판", "compose_exam"), ("2단 구분선", "set_columns_ext"),
     ("들여쓰기 내어쓰기", "set_paragraph_format_ext"), ("하이퍼링크", "insert_inline_ext"), ("바탕쪽", "set_page_options_ext"), ("스타일 만들기", "define_style_ext"),
     ("표 테두리", "format_table_ext"), ("문단 삭제", "delete_paragraph"), ("쪽 감추기", "add_page_control_ext"), ("개인정보", "scan_personal_info"),
+    ("백업 지우기", "delete_backups_ext"), ("백업 파일 삭제", "delete_backups_ext"), ("백업 정리", "delete_backups_ext"), (".bak 지우기", "delete_backups_ext"),
 ])
 def test_korean_task_words_lead_to_the_right_tool(srv, query, expected):
     server, lazy, _ = srv
@@ -160,7 +161,7 @@ def test_every_tool_has_a_hint_and_the_hints_name_no_other_tools(srv):
     ("apply_style_ext", "서식"), ("define_style_ext", "서식"), ("format_table", "표"), ("format_table_ext", "표"), ("merge_table_cells", "표"),
     ("insert_inline_ext", "글 중간"), ("add_endnote_ext", "글 중간"), ("add_paragraphs_ext", "문단·문서"), ("copy_paragraphs_ext", "문단·문서"),
     ("set_page_options_ext", "쪽·구역"), ("set_columns_ext", "쪽·구역"), ("search_and_replace", "글 바꾸기"), ("hwpx_read_layout", "읽기"),
-    ("get_document_info", "읽기"), ("undo_last_edit", "문서 열기"), ("fill_form_field", "양식"), ("scan_personal_info", "양식"), ("compose_exam", "시험지"),
+    ("get_document_info", "읽기"), ("undo_last_edit", "문서 열기"), ("delete_backups_ext", "문서 열기"), ("fill_form_field", "양식"), ("scan_personal_info", "양식"), ("compose_exam", "시험지"),
     ("render_preview", "한컴 렌더"), ("start_workflow", "작업 흐름"),
 ])
 def test_tools_are_in_the_group_a_person_would_look_in(srv, name, group_start):
