@@ -6,7 +6,7 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent / 'hyeyum-hwpx-format'
 BUILD, VERIFY = SKILL / 'scripts/build_exam.py', SKILL / 'scripts/verify_exam.py'
-EX = {'C': json.loads((SKILL / 'assets/examples/example_C.json').read_text(encoding='utf8'))}
+EX = {'basic': json.loads((SKILL / 'assets/examples/example_basic.json').read_text(encoding='utf8'))}
 
 
 def run(*args):
@@ -27,15 +27,15 @@ class T(unittest.TestCase):
 
     def verify(self, path, *flags): return run(VERIFY, *flags, path)
 
-    def q(self, kind='C', **kw):
-        q = copy.deepcopy([i for i in EX[kind]['items'] if i['type'] == 'question'][0]); q.update(kw); return q
+    def q(self, fid='basic', **kw):
+        q = copy.deepcopy([i for i in EX[fid]['items'] if i['type'] == 'question'][0]); q.update(kw); return q
 
-    def spec(self, base='C', **top):
+    def spec(self, base='basic', **top):
         s = copy.deepcopy(EX[base]); s.update(top); return s
 
     # ---- 정상 ----
     def test_examples_pass_strict(self):
-        _, out, p = self.build(EX['C'], 'C.hwpx')
+        _, out, p = self.build(EX['basic'], 'C.hwpx')
         code, v = self.verify(p); self.assertEqual(code, 0, v); self.assertNotIn(' FAIL ', v)
 
     def test_cwd_independent_and_help(self):
@@ -53,9 +53,8 @@ class T(unittest.TestCase):
         self.bad(None, '문법 오류', raw=b'{ "format": "basic", }')
         self.bad(None, 'UTF-8', raw='{"format":"basic"}'.encode('cp949') + '가'.encode('cp949'))
         self.bad(self.spec(format='D'), 'format은 "basic" 중 하나')
-        s = self.spec(); del s['format']; s['kind'] = 'D'; self.bad(s, 'format은')
-        s = self.spec(); del s['format']; s['kind'] = 'B'; self.bad(s, 'format은 "basic" 중 하나')
-        self.bad(self.spec(kind='C'), 'format과 kind를 함께')
+        s = self.spec(); del s['format']; s['kind'] = 'C'; self.bad(s, "알 수 없는 항목 ['kind']")
+        self.bad(self.spec(kind='basic'), "알 수 없는 항목 ['kind']")
         self.bad(self.spec(items=[]), 'items')
         self.bad(self.spec(extra=1), '알 수 없는 항목')
         self.bad(self.spec(title=[]), 'title')
@@ -81,12 +80,12 @@ class T(unittest.TestCase):
         s = self.spec(); s['title'] = ['a'] * 4; self.bad(s, '최대 3줄')
 
     def test_same_src_dst_and_missing_file(self):
-        p = self.d / 'a.json'; p.write_text(json.dumps(EX['C']), encoding='utf-8')
+        p = self.d / 'a.json'; p.write_text(json.dumps(EX['basic']), encoding='utf-8')
         code, out = run(BUILD, p, p); self.assertNotEqual(code, 0); self.assertIn('덮어', out); self.assertTrue(p.read_text(encoding='utf-8').startswith('{'))
         code, out = run(BUILD, self.d / 'nope.json', self.d / 'o.hwpx'); self.assertIn('입력 파일이 없습니다', out); self.assertNotIn('Traceback', out)
 
     def test_bom_ok_and_ctrl_chars_removed_and_new_output_dir(self):
-        raw = b'\xef\xbb\xbf' + json.dumps(EX['C'], ensure_ascii=False).encode('utf-8')
+        raw = b'\xef\xbb\xbf' + json.dumps(EX['basic'], ensure_ascii=False).encode('utf-8')
         self.build(None, raw=raw)
         s = self.spec(); [i for i in s['items'] if i['type'] == 'question'][0]['choices'][0] = '가\x0b나.'
         _, out, p = self.build(s, 'sub/dir/o.hwpx'); self.assertIn('제어문자', out); self.assertTrue(p.exists())
@@ -142,7 +141,7 @@ class T(unittest.TestCase):
 
     def test_verify_catches_mutations(self):
         import re
-        _, _, p = self.build(EX['C'], 'c.hwpx')
+        _, _, p = self.build(EX['basic'], 'c.hwpx')
         ch = lambda fn: (lambda s: re.sub(r'(<hp:t>①)(<hp:tab [^>]*/>)', lambda m: fn(m.group(1), m.group(2)), s, count=1))  # 본문 첫 선택지의 `①` 와 탭
         cases = {
             'colPr': (lambda s: re.sub(r'<hp:ctrl><hp:colPr.*?</hp:colPr></hp:ctrl>', '', s, flags=re.S), 'G3'),
@@ -203,19 +202,19 @@ class T(unittest.TestCase):
         sys.path.insert(0, str(SKILL / 'scripts')); import build_exam as be
         # 마지막 줄에 한 글자(+마침표)만 남는 선택지 본문(번호 제외): 자간을 줄여 한 줄 덜 쓴다
         self.assertEqual(be.wrap_lines('가' * 19 + '.', 10, 181.36 - 0.5), ['가' * 18, '가.'])
-        self.assertEqual(be.tighten('가' * 19 + '.', 'C'), (-5, 1, False))
-        self.assertEqual(be.tighten('가' * 18 + '.', 'C')[0], 0)           # 한 줄에 들어가면 그대로
-        self.assertEqual(be.tighten('가' * 40 + '나다.', 'C')[0], 0)       # 마지막 줄이 두 글자 이상이면 그대로
+        self.assertEqual(be.tighten('가' * 19 + '.', 'basic'), (-5, 1, False))
+        self.assertEqual(be.tighten('가' * 18 + '.', 'basic')[0], 0)           # 한 줄에 들어가면 그대로
+        self.assertEqual(be.tighten('가' * 40 + '나다.', 'basic')[0], 0)       # 마지막 줄이 두 글자 이상이면 그대로
         s = self.spec(); q = [i for i in s['items'] if i['type'] == 'question'][0]; q['choices'][0] = '가' * 19 + '.'; q['choices'][1] = '가' * 10 + '.'
         _, out, p = self.build(s); x = self.sec(p); h = self.hdr(p)
         self.assertIn('자간 줄임', out); self.assertIn('문항 1-① -5%', out)
-        tpl = zipfile.ZipFile(SKILL / 'assets/templates/exam_template_C.hwpx').read('Contents/header.xml').decode()
+        tpl = zipfile.ZipFile(SKILL / 'assets/templates/exam_template_basic.hwpx').read('Contents/header.xml').decode()
         self.assertEqual(h.count('<hh:spacing hangul="-5"'), tpl.count('<hh:spacing hangul="-5"') + 1)  # 템플릿(골든 C 헤더)에도 -5% 모양이 있어 하나 더해진 것만 센다
         code, v = self.verify(p); self.assertEqual(code, 0, v); self.assertIn('G36  PASS', v)
 
     def test_verify_rejects_bad_spacing(self):
         import re
-        _, _, p = self.build(EX['C'], 'c.hwpx'); h0 = self.hdr(p)
+        _, _, p = self.build(EX['basic'], 'c.hwpx'); h0 = self.hdr(p)
         mod = lambda f: self.mutate(p, lambda s: s, 'h.hwpx', hfn=f)
         v = self.verify(mod(lambda h: h.replace('hangul="-7" latin="-7"', 'hangul="-12" latin="-12"')))[1]; self.assertIn('G23  FAIL', v)      # 선택지 자간은 -7% 까지
         v = self.verify(mod(lambda h: re.sub(r'(<hh:charPr id="0" .*?<hh:spacing )hangul="0"', r'\1hangul="-5"', h, count=1, flags=re.S)))[1]; self.assertIn('G36  FAIL', v)  # 지문 글자의 자간 조정
@@ -244,23 +243,23 @@ class T(unittest.TestCase):
             s = self.spec(); s['items'].insert(1, {'type': br}); self.bad(s, '안내문과 지문 사이')
 
     def test_page_break_summary_excludes_heading(self):
-        _, out, _ = self.build(EX['C'], 'e.hwpx'); self.assertNotIn('쪽 나눔 2', out)
+        _, out, _ = self.build(EX['basic'], 'e.hwpx'); self.assertNotIn('쪽 나눔 2', out)
         s = self.spec(); s['items'] = [i for i in s['items'] if i['type'] != 'column_break']  # 나눔 없음: 쪽 나눔 0개, 높이 요약·경고 없음
         _, out, p = self.build(s, 'n.hwpx'); self.assertIn('단 나눔 0개·쪽 나눔 0개', out); self.assertNotIn('쪽별 추정', out)
         s = self.spec(); s['items'] = [i for i in s['items'] if i['type'] != 'column_break'] + [self.q() for _ in range(40)]; _, out, _ = self.build(s, 'big.hwpx'); self.assertNotIn('경고: 1쪽', out)
 
     def test_tighten_closing_quote_before_period(self):
         sys.path.insert(0, str(SKILL / 'scripts')); import build_exam as be
-        self.assertLess(be.tighten('가' * 19 + '’.', 'C')[0], 0); self.assertLess(be.tighten('가' * 19 + ').', 'C')[0], 0)
+        self.assertLess(be.tighten('가' * 19 + '’.', 'basic')[0], 0); self.assertLess(be.tighten('가' * 19 + ').', 'basic')[0], 0)
 
     def test_verify_header_counts_and_spacing_all_attributes(self):
-        _, _, p = self.build(EX['C'], 'c.hwpx')
+        _, _, p = self.build(EX['basic'], 'c.hwpx')
         m = self.mutate(p, lambda s: s, 'h1.hwpx', hfn=lambda h: re.sub(r'(<hh:charProperties itemCnt=")\d+(")', r'\g<1>99\2', h, count=1)); self.assertIn('G38  FAIL', self.verify(m)[1])
         m = self.mutate(p, lambda s: s, 'h2.hwpx', hfn=lambda h: h.replace('hangul="-7" latin="-7"', 'hangul="-6" latin="-12"')); self.assertIn('FAIL', self.verify(m)[1])
         m = self.mutate(p, lambda s: s, 'h3.hwpx', hfn=lambda h: h.replace('hangul="-7" latin="-7"', 'hangul="-12" latin="-12"')); self.assertIn('G36  FAIL', self.verify(m, '--lenient')[1])  # 원본 검사에서도 선택지 범위는 본다
 
     def test_choice_tab_stop_checked(self):
-        _, _, p = self.build(EX['C'], 'c.hwpx')
+        _, _, p = self.build(EX['basic'], 'c.hwpx')
         m = self.mutate(p, lambda s: s, 'ts.hwpx', hfn=lambda h: re.sub(r'(<hh:tabItem pos=")\d+(" type="LEFT" leader="NONE" unit="HWPUNIT"/></hp:case>)', r'\g<1>1234\2', h)); self.assertIn('G49  FAIL', self.verify(m)[1])  # 탭 정지가 둘째 줄 시작과 다르면
         self.assertIn('G49  PASS', self.verify(p)[1]); self.assertIn('G49  PASS', self.verify(p, '--lenient')[1])
 
@@ -364,26 +363,26 @@ class T(unittest.TestCase):
 
     def check_plugin_skills(self, out, expect):  # 생성된 각 스킬이 머리글을 갖추고 혼자서 예제를 만들고 검사를 통과하는지
         self.assertEqual(sorted(p.name for p in out.iterdir()), sorted(expect))
-        for sk, kinds in expect.items():
+        for sk, fids in expect.items():
             md = (out / sk / 'SKILL.md').read_text(encoding='utf8'); self.assertTrue(md.startswith(f'---\nname: {sk}\ndescription: '))
             self.assertLessEqual(len(re.search(r'description: (.*)', md).group(1)), 1024)
-            for k in kinds:
-                hw = self.d / f'{sk}_{k}.hwpx'; code, o = run(out / sk / 'scripts/build_exam.py', out / sk / f'assets/examples/example_{k}.json', hw); self.assertEqual(code, 0, o)
+            for fid in fids:
+                hw = self.d / f'{sk}_{fid}.hwpx'; code, o = run(out / sk / 'scripts/build_exam.py', out / sk / f'assets/examples/example_{fid}.json', hw); self.assertEqual(code, 0, o)
                 code, v = run(out / sk / 'scripts/verify_exam.py', hw); self.assertEqual(code, 0, v)
 
     def test_plugin_generated_in_sync_and_self_contained(self):  # 플러그인 스킬은 원본에서 생성한 복사본이므로 원본과 어긋나면 안 된다
         plugin = SKILL.parent.parent / 'plugins/hyeyum-hwpx'; out = self.d / 'skills'
         code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
         self.assertEqual(self.plugin_files(out), self.plugin_files(plugin / 'skills'), '원본을 고쳤으면 skill/build_plugin.py 를 다시 돌려 skills/ 를 갱신하세요')
-        self.check_plugin_skills(out, {'basic': 'C'})
+        self.check_plugin_skills(out, {'basic': ['basic']})
         self.assertNotIn('/hyeyum-hwpx:format', (out / 'basic/SKILL.md').read_text(encoding='utf8'))
         self.assertEqual([f['id'] for f in json.loads((out / 'basic/assets/formats.json').read_text(encoding='utf8'))], ['basic'])
         self.only_own_format(out / 'basic', ('형식 고르기',))
         sk = out / 'basic/scripts/build_exam.py'; s = self.spec(); del s['format']
         src = self.d / 'nofmt.json'; src.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
         code, o = run(sk, src, self.d / 'nofmt.hwpx'); self.assertEqual(code, 0, o); self.assertIn('기본 시험지(basic)', o)
-        _, _, ref = self.build(EX['C'], 'ref.hwpx'); self.assertEqual(self.sec(self.d / 'nofmt.hwpx'), self.sec(ref))   # 전용 스킬에서는 format 을 빼도 같은 시험지
-        for top, msg in (({'format': 'zzz'}, 'format은 "basic" 중 하나'), ({'kind': 'B'}, 'format은 "basic" 중 하나')):
+        _, _, ref = self.build(EX['basic'], 'ref.hwpx'); self.assertEqual(self.sec(self.d / 'nofmt.hwpx'), self.sec(ref))   # 전용 스킬에서는 format 을 빼도 같은 시험지
+        for top, msg in (({'format': 'zzz'}, 'format은 "basic" 중 하나'), ({'kind': 'basic'}, "알 수 없는 항목 ['kind']")):
             src.write_text(json.dumps({**s, **top}, ensure_ascii=False), encoding='utf-8'); code, o = run(sk, src, self.d / 'x.hwpx')
             self.assertNotEqual(code, 0); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
 
@@ -395,16 +394,18 @@ class T(unittest.TestCase):
     def test_plugin_all_formats_mode(self):  # 형식이 하나면 --all 도 그 형식만 만든다
         out = self.d / 'all'
         code, msg = run(SKILL.parent / 'build_plugin.py', '--all', out); self.assertEqual(code, 0, msg)
-        self.check_plugin_skills(out, {'basic': 'C'})
+        self.check_plugin_skills(out, {'basic': ['basic']})
 
     def test_plugin_router_with_two_formats(self):  # 형식을 더 낼 때를 위한 라우터 생성 경로: 복사본에 가짜 형식을 더해 시험한다
         src = self.d / 'src'; shutil.copytree(SKILL, src / SKILL.name); shutil.copy2(SKILL.parent / 'build_plugin.py', src)
         fj = src / SKILL.name / 'assets/formats.json'
-        fj.write_text(json.dumps(json.loads(fj.read_text(encoding='utf8')) + [dict(id='fake', kind='C', title='시험용 형식', when='시험용', traits='시험용')], ensure_ascii=False), encoding='utf-8')
+        fj.write_text(json.dumps(json.loads(fj.read_text(encoding='utf8')) + [dict(id='fake', title='시험용 형식', when='시험용', traits='시험용')], ensure_ascii=False), encoding='utf-8')
+        for rel in ('examples/example_{}.json', 'templates/exam_template_{}.hwpx', 'snippets/{}_bogi_box_1x1.xml'): shutil.copy2(SKILL / 'assets' / rel.format('basic'), src / SKILL.name / 'assets' / rel.format('fake'))
         md = src / SKILL.name / 'SKILL.md'; md.write_text(md.read_text(encoding='utf8') + '<!-- format:fake -->\nFAKE ONLY\n<!-- /format -->\n', encoding='utf-8')
         out = self.d / 'all'
         code, msg = run(src / 'build_plugin.py', '--all', out); self.assertEqual(code, 0, msg)
-        self.check_plugin_skills(out, {'basic': 'C', 'fake': '', 'format': 'C'})
+        self.check_plugin_skills(out, {'basic': ['basic'], 'fake': [], 'format': ['basic']})
+        self.assertTrue((out / 'fake/assets/templates/exam_template_fake.hwpx').exists()); self.assertFalse((out / 'fake/assets/templates/exam_template_basic.hwpx').exists()); self.assertFalse((out / 'basic/assets/snippets/fake_bogi_box_1x1.xml').exists())
         self.assertTrue((out / 'format/scripts/detect_format.py').exists()); self.assertFalse((out / 'fake/scripts/detect_format.py').exists())
         router = (out / 'format/SKILL.md').read_text(encoding='utf8'); self.assertIn('/hyeyum-hwpx:basic', router); self.assertIn('/hyeyum-hwpx:fake', router); self.assertIn('형식 고르기', router)
         self.assertIn('### 기본 시험지 (`basic`)', router); self.assertIn('FAKE ONLY', router); self.assertNotIn('이 명령의 형식은 아래 하나로', router); self.assertNotIn('<!--', router)
@@ -414,12 +415,13 @@ class T(unittest.TestCase):
         self.assertEqual(len(json.loads((out / 'format/assets/formats.json').read_text(encoding='utf8'))), 2)
         s = self.spec(); del s['format']; amb = self.d / 'amb.json'; amb.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
         code, o = run(out / 'format/scripts/build_exam.py', amb, self.d / 'amb.hwpx'); self.assertNotEqual(code, 0); self.assertIn('format(형식 이름)을 적어야', o)   # 라우터에서는 형식을 골라 적어야 한다
-        code, o = run(out / 'format/scripts/detect_format.py', self.d / 'format_C.hwpx'); self.assertEqual(code, 0, o); self.assertIn('형식 판별', o)
+        code, o = run(out / 'format/scripts/detect_format.py', self.d / 'format_basic.hwpx'); self.assertEqual(code, 0, o); self.assertIn('형식 판별', o)
 
-    def test_old_kind_input_still_builds_same(self):
-        s = self.spec(); fmt = s.pop('format'); s['kind'] = 'C'
-        _, out, p = self.build(s, 'oldC.hwpx'); _, _, ref = self.build(EX['C'], 'newC.hwpx')
-        self.assertEqual(self.sec(p), self.sec(ref)); self.assertIn(f'({fmt}) |', out); self.assertNotIn('형 |', out)
+    def test_kind_input_rejected_as_unknown_key(self):
+        s = self.spec(); del s['format']; s['kind'] = 'C'
+        code, out, p = self.build(s, 'k.hwpx', check=False)
+        self.assertNotEqual(code, 0); self.assertFalse(p.exists()); self.assertNotIn('Traceback', out)
+        self.assertIn("최상위: 알 수 없는 항목 ['kind']", out); self.assertNotIn("'kind'", out.split('쓸 수 있는 항목')[1])
 
     def test_keep_blocks(self):
         sys.path.insert(0, str(SKILL.parent)); import build_plugin as bp
@@ -445,7 +447,7 @@ class T(unittest.TestCase):
         s['group_start'] = 'zzz'; self.bad(s, 'group_start')
 
     def test_choice_structure_tab_aligned(self):
-        _, _, p = self.build(EX['C'], 'tabC.hwpx'); x = self.sec(p); h = self.hdr(p)
+        _, _, p = self.build(EX['basic'], 'tabC.hwpx'); x = self.sec(p); h = self.hdr(p)
         m = re.search(r'<hp:t>①<hp:tab width="(\d+)" leader="0" type="1"/>', x); self.assertTrue(m)
         self.assertIn(f'<hh:tabItem pos="1988" type="LEFT" leader="NONE" unit="HWPUNIT"/>', h)
         self.assertEqual(x.count('<hp:tab '), 10)   # 선택지 10개, 번호 뒤 탭 하나씩
@@ -453,7 +455,7 @@ class T(unittest.TestCase):
 
     def test_verify_bad_files(self):
         (self.d / 'bad.hwpx').write_bytes(b'not a zip'); (self.d / 'empty.hwpx').write_bytes(b'')
-        _, _, good = self.build(EX['C'], 'g.hwpx')
+        _, _, good = self.build(EX['basic'], 'g.hwpx')
         code, out = run(VERIFY, self.d / 'bad.hwpx', self.d / 'empty.hwpx', self.d / 'none.hwpx', good)
         self.assertEqual(code, 1); self.assertNotIn('Traceback', out); self.assertEqual(out.count('열 수 없는 파일'), 3); self.assertIn(' G1 ', out)  # 뒤 파일도 계속 검사
 
@@ -476,7 +478,7 @@ class T(unittest.TestCase):
         self.assertNotIn('Expecting', out); self.assertIn('문법 오류', out)
 
     def test_extract_nested_tables_and_inline_tab(self):
-        _, _, p = self.build(EX['C'], 'c.hwpx')
+        _, _, p = self.build(EX['basic'], 'c.hwpx')
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', p)
         self.assertEqual(code, 0, out); self.assertEqual(out.count('[미주 1] 정답 ③'), 1); self.assertIn('[발문 2]', out)
         self.assertLess(out.index('[발문 1]'), out.index('[미주 1]')); self.assertLess(out.index('[선택지] ⑤'), out.index('[미주 1]'))  # 미주는 해당 문항 선택지 뒤
@@ -502,7 +504,7 @@ class T(unittest.TestCase):
             code, v = self.verify(p); self.assertEqual(code, 0, v)
 
     def test_verify_survives_broken_inputs(self):
-        _, _, good = self.build(EX['C'], 'c.hwpx')
+        _, _, good = self.build(EX['basic'], 'c.hwpx')
         empty = self.mutate(good, lambda s: __import__('re').sub(r'(<hp:t>)[^<]*(</hp:t>)', r'\1\2', s), 'empty.hwpx')
         code, out = run(VERIFY, empty); self.assertNotIn('Traceback', out)
         # 섹션 항목 CRC 손상 + 뒤에 정상 파일
@@ -510,20 +512,20 @@ class T(unittest.TestCase):
         raw[info.header_offset + 30 + len(info.filename.encode()) + 40] ^= 0xFF; (self.d / 'crc.hwpx').write_bytes(bytes(raw))
         code, out = run(VERIFY, self.d / 'crc.hwpx', good); self.assertNotIn('Traceback', out); self.assertIn('###', out.split('###', 2)[2] and '###'); self.assertEqual(out.count('###'), 2)
         # 미주에만 배점이 있는 C 파일, mimetype 내용
-        _, _, c2 = self.build(EX['C'], 'c2.hwpx'); import re
+        _, _, c2 = self.build(EX['basic'], 'c2.hwpx'); import re
         m = self.mutate(c2, lambda s: re.sub(r' \[\d+\.\d점\]</hp:t><hp:ctrl><hp:endNote', '</hp:t><hp:ctrl><hp:endNote', s), 'noscore.hwpx')
         code, out = run(VERIFY, m); self.assertIn('G31', [l for l in out.splitlines() if 'FAIL' in l and 'G31' in l][0])
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', self.d); self.assertNotIn('Traceback', out)
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', '--help'); self.assertIn('사용:', out)
 
     def test_verify_value_error_is_structure_fail(self):  # 열린 파일의 잘못된 값은 '열 수 없는 파일'이 아니라 구조 오류
-        _, _, good = self.build(EX['C'], 'g.hwpx')
+        _, _, good = self.build(EX['basic'], 'g.hwpx')
         m = self.mutate(good, lambda s: s, 'h.hwpx', hfn=lambda h: re.sub(r'(<hh:charPr id="\d+" height=")\d+', r'\1x', h))
         code, out = run(VERIFY, m); self.assertEqual(code, 1); self.assertNotIn('Traceback', out)
         self.assertIn('구조 오류(ValueError', out); self.assertNotIn('열 수 없는 파일', out)
 
     def test_extract_counts_endnote_equation_once(self):
-        _, _, p = self.build(EX['C'], 'c.hwpx')
+        _, _, p = self.build(EX['basic'], 'c.hwpx')
         m = self.mutate(p, lambda s: s.replace('<hp:t>출제 포인트  </hp:t>', '<hp:t>출제 포인트  </hp:t><hp:equation><hp:script>x</hp:script></hp:equation>', 1), 'eq.hwpx')
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', m); self.assertEqual(code, 0, out)
         self.assertIn('[수식: x]', out); self.assertIn('수식 1개', out)

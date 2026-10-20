@@ -16,7 +16,8 @@ SRC = HERE / 'hyeyum-hwpx-format'
 PLUGIN = 'hyeyum-hwpx'
 SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py']
 DOCS = ['references/exam-json.md', 'references/format-spec.md']
-EXCLUDE = '서술형·다른 과목, 파일 없이 채팅으로만 출제, 공문 등 일반 문서, 워드 변환은 제외.'
+USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 만들거나 기존 시험지를 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
+EXCLUDE = '서술형·단답형, 국어 외 과목, 파일 없이 채팅으로만 하는 출제, 공문 같은 일반 문서, 워드(.docx) 변환에는 쓰지 않는다.'
 BLOCK_LINES = re.compile(r'^<!-- format:([\w,-]+) -->\n(.*?)^<!-- /format -->\n', re.S | re.M)
 BLOCK_INLINE = re.compile(r'<!-- format:([\w,-]+) -->(.*?)<!-- /format -->', re.S)
 
@@ -38,12 +39,12 @@ def build(out, include_all=False):
     router = len(formats) > 1  # 형식이 하나면 고를 것이 없다
     body = re.match(r'---\n.*?\n---\n(.*)', (SRC / 'SKILL.md').read_text(encoding='utf-8'), re.S).group(1)
     if out.exists(): shutil.rmtree(out)
-    router_desc = ('고등학교 국어 시험지(5지선다 선택형)를 한글(.hwpx) 파일로 만들 때, 어느 형식으로 만들지 정하지 않았거나 올린 시험지 파일에서 형식을 알아내야 할 때 쓴다. '
+    router_desc = ('국어 5지선다 시험지를 한글(.hwpx) 파일로 만들 때, 어느 형식으로 만들지 정하지 않았거나 올린 시험지 파일에서 형식을 알아내야 할 때 쓴다. '
                    '시험지·문제지·중간·기말고사·모의고사, 보기 상자, 정답·해설 미주, 기존 시험지 서식 정리. 등록된 형식: '
                    + ', '.join(f'{f["title"]}(/{PLUGIN}:{f["id"]})' for f in formats) + f'. {EXCLUDE}')
     skills = [dict(id='format', desc=router_desc, ids={'router'} | {f['id'] for f in formats}, formats=formats, extra=['scripts/detect_format.py'])] if router else []
     for f in formats:
-        desc = (f'{f["title"]} 형식의 고등학교 국어 시험지(5지선다)를 한글(.hwpx)로 만들 때 쓴다. {f["when"]}. 특징: {f["traits"]}. '
+        desc = (f'{USE} {f["title"]}: {f["when"]}. {f["traits"]}. '
                 + ((f'다른 형식이 필요하면 /{PLUGIN}:format. ' if f.get('default') else f'형식이 다르거나 정해지지 않았으면 /{PLUGIN}:format. ') if router else '') + EXCLUDE)
         skills.append(dict(id=f['id'], desc=desc, ids={'pinned', f['id']}, formats=[f], extra=[]))
     for s in skills:
@@ -53,8 +54,8 @@ def build(out, include_all=False):
             (d / rel).parent.mkdir(parents=True, exist_ok=True); (d / rel).write_text(keep_blocks((SRC / rel).read_text(encoding='utf-8'), s['ids']), encoding='utf-8')
         (d / 'assets').mkdir(exist_ok=True)
         (d / 'assets/formats.json').write_text(json.dumps(s['formats'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        for k in [f['kind'] for f in s['formats']]:
-            for rel in [f'assets/examples/example_{k}.json', f'assets/templates/exam_template_{k}.hwpx'] + [str(p.relative_to(SRC)) for p in sorted((SRC / 'assets/snippets').glob(f'{k}_*.xml'))]:
+        for fid in [f['id'] for f in s['formats']]:
+            for rel in [f'assets/examples/example_{fid}.json', f'assets/templates/exam_template_{fid}.hwpx'] + [str(p.relative_to(SRC)) for p in sorted((SRC / 'assets/snippets').glob(f'{fid}_*.xml'))]:
                 copy(rel, d)
         desc = s['desc'].replace('\n', ' ')
         assert len(desc) <= 1024, (s['id'], len(desc))  # Agent Skills 표준의 description 상한

@@ -1,17 +1,28 @@
 {
   "name": "hyeyum-hwpx",
-  "displayName": "혜윰 한글(HWPX) 시험지",
+  "displayName": "혜윰학원 한글 플러그인",
   "version": "1.0.0",
-  "description": "고등학교 국어 시험지를 한글(.hwpx)로 만드는 스킬(/hyeyum-hwpx:basic)과 한글 문서 편집 도구. 편집 도구는 Claude Code와 내 컴퓨터의 Cowork에서만 실행되고, Claude 일반 채팅에서는 hyeyum-hwpx-toolkit .mcpb 확장을 따로 설치한다.",
-  "author": { "name": "JunseoKR" },
+  "description": "혜윰학원 국어 시험지 한글 문서(HWPX)를 만드는 MCP와 스킬이에요.",
+  "author": {
+    "name": "JunseoKR"
+  },
   "repository": "https://github.com/HyeyumEdu/agent-plugins",
   "license": "Apache-2.0",
-  "keywords": ["hwpx", "한글", "시험지", "국어"],
   "mcpServers": {
     "hyeyum-hwpx-toolkit": {
       "command": "uv",
-      "args": ["run", "--frozen", "--quiet", "--directory", "${CLAUDE_PLUGIN_ROOT}/server", "src/server.py",
-               "${CLAUDE_PROJECT_DIR}", "${HOME:-}/Documents", "${HOME:-}/Desktop", "${HOME:-}/Downloads"],
+      "args": [
+        "run",
+        "--frozen",
+        "--quiet",
+        "--directory",
+        "${CLAUDE_PLUGIN_ROOT}/server",
+        "src/server.py",
+        "${CLAUDE_PROJECT_DIR}",
+        "${HOME:-}/Documents",
+        "${HOME:-}/Desktop",
+        "${HOME:-}/Downloads"
+      ],
       "env": {
         "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv",
         "PYTHONDONTWRITEBYTECODE": "1"

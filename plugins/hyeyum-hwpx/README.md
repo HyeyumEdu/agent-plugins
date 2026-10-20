@@ -1,6 +1,6 @@
-# 혜윰 한글(HWPX) 시험지
+# 혜윰학원 한글 플러그인
 
-고등학교 국어 5지선다 시험지를 한컴 한글 파일(.hwpx)로 만들고, 이미 있는 한글 문서를 읽고 고칩니다. Claude, Codex, Cursor, Gemini CLI 등 Agent Skills와 MCP를 지원하는 에이전트에서 씁니다.
+국어 시험지를 한글 문서(HWPX)로 만들고, 이미 있는 한글 문서를 읽고 수정할 수 있어요. Claude, Codex, Cursor, Gemini CLI 등 Agent Skills와 MCP를 지원하는 에이전트에서 쓸 수 있어요.
 
 ## 쓰는 법
 - **시험지 만들기**: 지문·문항·정답·해설을 주고 "시험지 만들어 줘"라고 하거나 스킬 `basic`을 부릅니다(Claude는 `/hyeyum-hwpx:basic`). 에이전트가 내용을 정리해 스킬의 스크립트로 서식이 맞춰진 `.hwpx`를 만들고 규칙 검사까지 합니다.
