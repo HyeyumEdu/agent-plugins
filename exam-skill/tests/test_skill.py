@@ -397,7 +397,7 @@ class T(unittest.TestCase):
 
     def test_detect_format(self):
         _, _, p = self.build(self.spec(), 'detC.hwpx'); code, out = run(SKILL / 'scripts/detect_format.py', p)
-        self.assertEqual(code, 0, out); self.assertIn('/hyeyum-hwpx:basic', out); self.assertIn('확실', out); self.assertNotRegex(out, '[BC]형')
+        self.assertEqual(code, 0, out); self.assertIn('/hyeyum-hwpx:exam-basic', out); self.assertIn('확실', out); self.assertNotRegex(out, '[BC]형')
         code, out = run(SKILL / 'scripts/detect_format.py', self.d / 'nope.hwpx'); self.assertEqual(code, 1); self.assertIn('오류', out); self.assertNotIn('Traceback', out)
         self.assertEqual(run(SKILL / 'scripts/detect_format.py')[0], 2)
 
@@ -415,12 +415,13 @@ class T(unittest.TestCase):
     def test_plugin_generated_in_sync_and_self_contained(self):  # 플러그인 스킬은 원본에서 생성한 복사본이므로 원본과 어긋나면 안 된다
         plugin = SKILL.parent.parent / 'plugins/hyeyum-hwpx'; out = self.d / 'skills'
         code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
-        self.assertEqual(self.plugin_files(out), self.plugin_files(plugin / 'skills'), '원본을 고쳤으면 skill/build_plugin.py 를 다시 돌려 skills/ 를 갱신하세요')
-        self.check_plugin_skills(out, {'basic': ['basic']})
-        self.assertNotIn('/hyeyum-hwpx:format', (out / 'basic/SKILL.md').read_text(encoding='utf8'))
-        self.assertEqual([f['id'] for f in json.loads((out / 'basic/assets/formats.json').read_text(encoding='utf8'))], ['basic'])
-        self.only_own_format(out / 'basic', ('형식 고르기',))
-        sk = out / 'basic/scripts/build_exam.py'; s = self.spec(); del s['format']
+        handwritten = {k: v for k, v in self.plugin_files(plugin / 'skills').items() if k.split('/')[0] not in ('hwpx',)}  # 직접 쓰는 스킬은 생성 대상이 아니다
+        self.assertEqual(self.plugin_files(out), handwritten, '원본을 고쳤으면 skill/build_plugin.py 를 다시 돌려 skills/ 를 갱신하세요')
+        self.check_plugin_skills(out, {'exam-basic': ['basic']})
+        self.assertNotIn('/hyeyum-hwpx:exam-format', (out / 'exam-basic/SKILL.md').read_text(encoding='utf8'))
+        self.assertEqual([f['id'] for f in json.loads((out / 'exam-basic/assets/formats.json').read_text(encoding='utf8'))], ['basic'])
+        self.only_own_format(out / 'exam-basic', ('형식 고르기',))
+        sk = out / 'exam-basic/scripts/build_exam.py'; s = self.spec(); del s['format']
         src = self.d / 'nofmt.json'; src.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
         code, o = run(sk, src, self.d / 'nofmt.hwpx'); self.assertEqual(code, 0, o); self.assertIn('기본 시험지(basic)', o)
         _, _, ref = self.build(EX['basic'], 'ref.hwpx'); self.assertEqual(self.sec(self.d / 'nofmt.hwpx'), self.sec(ref))   # 전용 스킬에서는 format 을 빼도 같은 시험지
@@ -428,9 +429,19 @@ class T(unittest.TestCase):
             src.write_text(json.dumps({**s, **top}, ensure_ascii=False), encoding='utf-8'); code, o = run(sk, src, self.d / 'x.hwpx')
             self.assertNotEqual(code, 0); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
 
+    def test_handwritten_hwpx_skill_kept_and_valid(self):  # 문서 편집 스킬 hwpx 는 직접 쓰는 원본: 생성기가 지우지 않고, 머리글은 업로드에서도 안전한 항목만
+        sk = SKILL.parent.parent / 'plugins/hyeyum-hwpx/skills/hwpx/SKILL.md'; md = sk.read_text(encoding='utf8')
+        head = re.match(r'---\n(.*?)\n---\n', md, re.S).group(1)
+        self.assertEqual([l.split(':')[0] for l in head.splitlines()], ['name', 'description']); self.assertIn('name: hwpx\n', md)
+        self.assertLessEqual(len(re.search(r'description: (.*)', md).group(1)), 1024)
+        for w in ('hyeyum-hwpx-toolkit', 'hwpx_find_tools', 'undo_last_edit', 'delete_backups_ext', '부품을 활용', '부품으로 등록하지 않는다', 'exam-basic', 'XML을 직접'): self.assertIn(w, md)
+        out = self.d / 'keep'; (out / 'hwpx').mkdir(parents=True); (out / 'hwpx/SKILL.md').write_text('x', encoding='utf-8'); (out / 'basic').mkdir()
+        code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
+        self.assertEqual((out / 'hwpx/SKILL.md').read_text(encoding='utf8'), 'x'); self.assertEqual(sorted(p.name for p in out.iterdir()), ['exam-basic', 'hwpx'])
+
     def test_plugin_carries_components(self):  # 생성된 스킬이 부품 폴더·components.py·목록 문서를 스스로 갖는다
         out = self.d / 'comp'; code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
-        sk = out / 'basic'; ids = sorted(set(json.loads((sk / 'assets/formats.json').read_text(encoding='utf8'))[0]['parts'].values()))
+        sk = out / 'exam-basic'; ids = sorted(set(json.loads((sk / 'assets/formats.json').read_text(encoding='utf8'))[0]['parts'].values()))
         self.assertEqual(len(ids), 10); self.assertEqual(sorted(p.name for p in (sk / 'assets/components').iterdir()), ids); self.assertFalse((sk / 'assets/snippets').exists())
         code, o = run(sk / 'scripts/components.py'); self.assertEqual(code, 0, o)
         for i in ids: self.assertIn(i, o)
@@ -445,7 +456,7 @@ class T(unittest.TestCase):
     def test_plugin_all_formats_mode(self):  # 형식이 하나면 --all 도 그 형식만 만든다
         out = self.d / 'all'
         code, msg = run(SKILL.parent / 'build_plugin.py', '--all', out); self.assertEqual(code, 0, msg)
-        self.check_plugin_skills(out, {'basic': ['basic']})
+        self.check_plugin_skills(out, {'exam-basic': ['basic']})
 
     def test_plugin_router_with_two_formats(self):  # 형식을 더 낼 때를 위한 라우터 생성 경로: 복사본에 가짜 형식을 더해 시험한다
         src = self.d / 'src'; shutil.copytree(SKILL, src / SKILL.name); shutil.copy2(SKILL.parent / 'build_plugin.py', src)
@@ -456,19 +467,19 @@ class T(unittest.TestCase):
         md = src / SKILL.name / 'SKILL.md'; md.write_text(md.read_text(encoding='utf8') + '<!-- format:fake -->\nFAKE ONLY\n<!-- /format -->\n', encoding='utf-8')
         out = self.d / 'all'
         code, msg = run(src / 'build_plugin.py', '--all', out); self.assertEqual(code, 0, msg)
-        self.check_plugin_skills(out, {'basic': ['basic'], 'fake': [], 'format': ['basic']})
-        self.assertTrue((out / 'fake/assets/templates/exam_template_fake.hwpx').exists()); self.assertFalse((out / 'fake/assets/templates/exam_template_basic.hwpx').exists());
-        self.assertFalse((out / 'basic/assets/snippets').exists()); self.assertEqual(sorted(p.name for p in (out / 'fake/assets/components').iterdir()), sorted(set(fl[0]['parts'].values())))
-        self.assertTrue((out / 'format/scripts/detect_format.py').exists()); self.assertFalse((out / 'fake/scripts/detect_format.py').exists())
-        router = (out / 'format/SKILL.md').read_text(encoding='utf8'); self.assertIn('/hyeyum-hwpx:basic', router); self.assertIn('/hyeyum-hwpx:fake', router); self.assertIn('형식 고르기', router)
+        self.check_plugin_skills(out, {'exam-basic': ['basic'], 'exam-fake': [], 'exam-format': ['basic']})
+        self.assertTrue((out / 'exam-fake/assets/templates/exam_template_fake.hwpx').exists()); self.assertFalse((out / 'exam-fake/assets/templates/exam_template_basic.hwpx').exists());
+        self.assertFalse((out / 'exam-basic/assets/snippets').exists()); self.assertEqual(sorted(p.name for p in (out / 'exam-fake/assets/components').iterdir()), sorted(set(fl[0]['parts'].values())))
+        self.assertTrue((out / 'exam-format/scripts/detect_format.py').exists()); self.assertFalse((out / 'exam-fake/scripts/detect_format.py').exists())
+        router = (out / 'exam-format/SKILL.md').read_text(encoding='utf8'); self.assertIn('/hyeyum-hwpx:exam-basic', router); self.assertIn('/hyeyum-hwpx:exam-fake', router); self.assertIn('형식 고르기', router)
         self.assertIn('### 기본 시험지 (`basic`)', router); self.assertIn('FAKE ONLY', router); self.assertNotIn('이 명령의 형식은 아래 하나로', router); self.assertNotIn('<!--', router)
-        fake = (out / 'fake/SKILL.md').read_text(encoding='utf8'); self.assertIn('FAKE ONLY', fake); self.assertIn('/hyeyum-hwpx:format', fake)
-        self.only_own_format(out / 'fake', ('`basic`', '기본 시험지', 'pp41', 'pp62', '형식 고르기'))
-        basic = (out / 'basic/SKILL.md').read_text(encoding='utf8'); self.assertNotIn('FAKE ONLY', basic); self.assertIn('다른 형식이 필요하면 /hyeyum-hwpx:format', basic)
-        self.assertEqual(len(json.loads((out / 'format/assets/formats.json').read_text(encoding='utf8'))), 2)
+        fake = (out / 'exam-fake/SKILL.md').read_text(encoding='utf8'); self.assertIn('FAKE ONLY', fake); self.assertIn('/hyeyum-hwpx:exam-format', fake)
+        self.only_own_format(out / 'exam-fake', ('`basic`', '기본 시험지', 'pp41', 'pp62', '형식 고르기'))
+        basic = (out / 'exam-basic/SKILL.md').read_text(encoding='utf8'); self.assertNotIn('FAKE ONLY', basic); self.assertIn('다른 형식이 필요하면 /hyeyum-hwpx:exam-format', basic)
+        self.assertEqual(len(json.loads((out / 'exam-format/assets/formats.json').read_text(encoding='utf8'))), 2)
         s = self.spec(); del s['format']; amb = self.d / 'amb.json'; amb.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
-        code, o = run(out / 'format/scripts/build_exam.py', amb, self.d / 'amb.hwpx'); self.assertNotEqual(code, 0); self.assertIn('format(형식 이름)을 적어야', o)   # 라우터에서는 형식을 골라 적어야 한다
-        code, o = run(out / 'format/scripts/detect_format.py', self.d / 'format_basic.hwpx'); self.assertEqual(code, 0, o); self.assertIn('형식 판별', o)
+        code, o = run(out / 'exam-format/scripts/build_exam.py', amb, self.d / 'amb.hwpx'); self.assertNotEqual(code, 0); self.assertIn('format(형식 이름)을 적어야', o)   # 라우터에서는 형식을 골라 적어야 한다
+        code, o = run(out / 'exam-format/scripts/detect_format.py', self.d / 'exam-format_basic.hwpx'); self.assertEqual(code, 0, o); self.assertIn('형식 판별', o)
 
     def test_kind_input_rejected_as_unknown_key(self):
         s = self.spec(); del s['format']; s['kind'] = 'C'
@@ -831,7 +842,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
 
     # ---- G50: 본문 모양이 등록된 부품 모양과 같은지 ----
     def g50(self, path, *flags):
-        code, out = run(VERIFY, *flags, path); m = re.search(r'^\s+G50\s+(PASS|FAIL)\s+(.*)$', out, re.M)
+        code, out = run(VERIFY, *flags, path); m = re.search(r'^\s+G50\s+(PASS|FAIL|WARN)\s+(.*)$', out, re.M)
         self.assertIsNotNone(m, out); self.assertNotIn('Traceback', out); return m.group(1), m.group(2), out
 
     def built(self, spec=None, name='b.hwpx'):
@@ -861,7 +872,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         for i, sp in enumerate((base, v1, v2, v3, v4, v5)):
             st, v, _ = self.g50(self.built(sp, f'v{i}.hwpx')); self.assertEqual(st, 'PASS', (i, v))
 
-    def test_g50_fails_on_unregistered_shape(self):
+    def test_g50_warns_on_unregistered_shape(self):  # 에이전트가 도구로 덧붙인 서식은 막지 않고 알린다
         p = self.built()
         sub = lambda pat, new: (lambda x: re.sub(pat, new, x, count=1, flags=re.S))  # 첫 문단(구역 설정)은 템플릿 몫이라 건너뛰고 본문부터 찾는다
         cases = {'paraPr': dict(fn=sub(r'(</hp:secPr>.*?paraPrIDRef=")61(")', r'\g<1>1\2')), 'charPr': dict(fn=sub(r'(</hp:p>.*?charPrIDRef=")53(")', r'\g<1>5\2')),
@@ -869,7 +880,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
                  'header_align': dict(hfn=lambda h: re.sub(r'<hh:paraPr id="32".*?</hh:paraPr>', lambda m: m.group(0).replace('horizontal="JUSTIFY"', 'horizontal="LEFT"', 1), h, count=1, flags=re.S))}
         for k, kw in cases.items():
             q = self.mut(p, name=f'{k}.hwpx', **kw); self.assertNotEqual(self.parts(q), self.parts(p), k)  # 고쳐졌는지
-            st, v, _ = self.g50(q); self.assertEqual(st, 'FAIL', (k, v)); self.assertIn('등록된 부품에 없는 모양', v, k)
+            st, v, _ = self.g50(q); self.assertEqual(st, 'WARN', (k, v)); self.assertIn('등록된 부품에 없는 모양', v, k)
 
     def test_g50_ignores_variant_attributes(self):
         h = lambda x: re.sub(r'<hh:paraPr id="32".*?</hh:paraPr>', lambda m: re.sub(r'keepWithNext="0"', 'keepWithNext="1"', m.group(0)), x, count=1, flags=re.S)
@@ -878,7 +889,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
 
     def test_g50_skipped_in_lenient(self):
         q = self.mut(self.built(), fn=lambda x: re.sub(r'(</hp:secPr>.*?paraPrIDRef=")61(")', r'\g<1>1\2', x, count=1, flags=re.S))
-        self.assertEqual(self.g50(q)[0], 'FAIL')
+        self.assertEqual(self.g50(q)[0], 'WARN')
         st, v, _ = self.g50(q, '--lenient'); self.assertEqual(st, 'PASS'); self.assertIn('원본 검사는 건너뜀', v)
 
     def test_g50_missing_components_is_fail_not_traceback(self):
@@ -927,12 +938,14 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
 
     def test_skill_md_requires_component_check(self):
         out = self.d / 'sk'; code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
-        t = (out / 'basic/SKILL.md').read_text(encoding='utf8')
+        t = (out / 'exam-basic/SKILL.md').read_text(encoding='utf8')
         sec = t.split('## 새 시험지를 만드는 순서')[1]; first = re.split(r'\n2\. ', sec, maxsplit=1)[0]
         self.assertRegex(first, r'\n1\. '); self.assertIn('components.py', first)
-        for w in ('목록에 없으면', 'XML을 직접', '다른 도구'): self.assertIn(w, first)
-        self.assertNotIn('G50', t.split('## 더 자세한 규칙')[0].split('4. 규칙을 검사한다')[0])  # 교사에게 보이는 앞부분에는 규칙 번호가 없다
-        self.assertIn('components.py', (out / 'basic/references/exam-json.md').read_text(encoding='utf8'))
+        for w in ('목록에 없으면', 'XML을 직접', '편집 도구로 덧붙인다'): self.assertIn(w, first)
+        self.assertIn('## 부품에 없는 구조를 도구로 덧붙일 때', t); self.assertIn('⑥ 부품에 없는 구조를 도구로 덧붙였으면', t)
+        self.assertIn('부품으로 등록하지 않는다', t)  # 사용자 쪽에서는 부품을 추가하지 않는다
+        self.assertNotIn('G50', t.split('5. 규칙을 검사한다')[0])  # 교사에게 보이는 앞부분에는 규칙 번호가 없다  # 교사에게 보이는 앞부분에는 규칙 번호가 없다
+        self.assertIn('components.py', (out / 'exam-basic/references/exam-json.md').read_text(encoding='utf8'))
 
 
 if __name__ == '__main__':

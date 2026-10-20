@@ -39,7 +39,7 @@ _HINTS = {
     "compose_section_chip": "섹션 구분 칩", "compose_simple_draft": "간단 초안 조판", "compute_report_value": "보고서 값 계산", "continue_workflow": "작업 흐름 계속",
     "copy_document": "문서 파일 복사", "copy_paragraphs_ext": "문단 범위 복제(문항 틀 복제)", "create_comparison_table_document": "비교표 문서", "create_custom_style": "간단 스타일 만들기",
     "create_document": "새 문서", "create_document_from_plan": "계획으로 문서 생성", "create_government_report_document": "정부 보고서 문서", "create_proposal_document": "제안서 문서",
-    "define_style_ext": "스타일 만들기·수정(문단·글자 모양 id)", "delete_paragraph": "문단 삭제", "describe_capabilities": "서버 기능 목록", "describe_template": "템플릿 설명",
+    "define_style_ext": "스타일 만들기·수정(문단·글자 모양 id)", "delete_backups_ext": "백업 파일(.bak) 지우기·정리(폴더 안 백업 파일 삭제)", "delete_paragraph": "문단 삭제", "describe_capabilities": "서버 기능 목록", "describe_template": "템플릿 설명",
     "doc_diff": "두 문서 차이 비교", "document_extract_json": "문서를 JSON으로", "document_to_markdown": "문서를 마크다운으로", "dump_document_blueprint": "문서 설계도 추출",
     "extract_style_profile": "스타일 프로필 추출", "fill_by_path": "경로로 값 채우기", "fill_form_field": "양식 칸 채우기", "find_cell_by_label": "라벨로 표 칸 찾기", "find_text": "글 찾기",
     "format_table": "표 테두리·음영(간단)", "format_table_ext": "표 폭·높이·여백·테두리·병합·칸 내용", "format_text": "글자 범위 굵게·크기·색(간단)", "format_text_ext": "글자 범위 장평·자간·밑줄·첨자·강조점",
@@ -88,6 +88,7 @@ _NOTES = {
     "insert_picture": ["Appends the picture at the end of the document and needs image_base64. For a picture file in the workspace, or a picture inside a paragraph, use insert_inline_ext with a picture item {\"path\": \"logo.png\", \"width_mm\": 20}."],
     "set_page_setup": ['Portrait is stored as orientation "WIDELY" (landscape as "NARROWLY"). Margins are in mm.'],
     "mcp_server_health": ["The reply is long; the verdict is the first key and toolSurface.status (\"ok\")."],
+    "delete_backups_ext": ["Deletes only backup files (name.hwpx.bak, name.hwpx.bak.N) directly in the folder, for good: undo_last_edit stops working for them. Run it with dry_run=true first and tell the user what would go."],
     "get_document_text": ["Phone numbers and similar personal data are masked by default; pass mask=false for the original text."],
 }
 
@@ -116,7 +117,7 @@ _GROUPS: list[tuple[str, re.Pattern[str]]] = [
      re.compile(r"^(replace_|search_and_replace|batch_replace|apply_edits|apply_body_ops|apply_document_commands|run_edit_plan|byte_preserving_patch|replay_document_blueprint)")),
     ("읽기 (read)", re.compile(r"^(get_|find_text|query_|document_to_markdown|document_extract_json|hwpx_to_|hwpx_extract_json|hwpx_read_layout|dump_document_blueprint)")),
     ("문서 열기·복사·되돌리기·비교·점검 (documents, undo, repair, diff, health)",
-     re.compile(r"^(list_available_documents|get_document_info|mcp_server_health|describe_capabilities|copy_document|undo_last_edit|repair_hwpx|doc_diff)$")),
+     re.compile(r"^(list_available_documents|get_document_info|mcp_server_health|describe_capabilities|copy_document|undo_last_edit|delete_backups_ext|repair_hwpx|doc_diff)$")),
 ]
 _OTHER = "기타 (other)"
 #: 지도 순서(자주 쓰는 것부터).
@@ -134,7 +135,7 @@ _SYNONYMS = {
     "문서 끼워": "insert document", "시험지": "exam", "문항": "question exam", "양식": "form template", "명부": "mail merge", "개인정보": "personal info",
     "탭 정지": "tab stops", "정지": "stop stops", "어절": "word", "글꼴": "font", "크기": "size", "굵게": "bold", "밑줄": "underline", "색": "color",
     "구분선": "separator line", "머리글": "header", "바닥글": "footer", "행": "row", "열": "column col", "칸": "cell", "넣기": "insert add", "달기": "add insert",
-    "만들기": "create define add", "지우기": "delete remove", "복사": "copy", "붙여": "insert paste", "이어": "append continue", "점검": "health inspect check",
+    "만들기": "create define add", "지우기": "delete remove", "정리": "clean delete remove", "복사": "copy", "붙여": "insert paste", "이어": "append continue", "점검": "health inspect check",
     "직인": "seal", "조직도": "organization chart", "보고서": "report government", "비교": "diff compare", "복구": "repair",
 }
 

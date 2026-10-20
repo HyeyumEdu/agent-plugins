@@ -1,6 +1,6 @@
 {
   "name": "hyeyum-hwpx",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "혜윰학원 국어 시험지 한글 문서(HWPX)를 만드는 MCP와 스킬이에요.",
   "mcpServers": {
     "hyeyum-hwpx-toolkit": {

@@ -114,6 +114,9 @@ EXAMPLES: dict[str, list[dict[str, Any]]] = {
     "copy_document": [
         {"does": "문서 사본 만들기", "arguments": {"source_filename": F, "destination_filename": "backup.hwpx"}},
     ],
+    "delete_backups_ext": [
+        {"does": "첫 허용 폴더의 백업 파일(.bak)이 무엇인지 지우지 않고 미리 보기", "arguments": {"dry_run": True}},
+    ],
     "undo_last_edit": [
         {"does": "직전 편집(한 단계) 되돌리기", "arguments": {"filename": F}},
     ],

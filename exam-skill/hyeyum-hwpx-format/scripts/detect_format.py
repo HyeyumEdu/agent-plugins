@@ -45,7 +45,7 @@ def main(argv):
     detail = ' / '.join(f'{g["id"]} {s:.2f}' for s, g in scores)
     if level == '판별 불가':
         print(f'형식 판별: 판별 불가 (일치도 {detail}) — 사용자에게 어느 형식인지 묻는다'); return 0
-    print(f'형식 판별: {f["title"]} → /hyeyum-hwpx:{f["id"]}  ({level}; 일치도 {detail})'); return 0
+    print(f'형식 판별: {f["title"]} → /hyeyum-hwpx:exam-{f["id"]}  ({level}; 일치도 {detail})'); return 0
 
 
 if __name__ == '__main__':

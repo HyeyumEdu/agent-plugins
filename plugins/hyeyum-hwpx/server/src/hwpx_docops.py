@@ -2,13 +2,15 @@
 
 쓰기 절차는 hwpx_common._commit. hwpx_edit는 가져오지 않는다(순환 import 방지).
 """
+import os
+import re
 from collections import Counter
 from typing import Any
 
 from hwpx.oxml.namespaces import HH, HP
 from hwpx.tools import document_merge
 from hwpx_automation.core.document import open_doc
-from hwpx_automation.workspace import WorkspaceResolver
+from hwpx_automation.workspace import WorkspacePathError, WorkspaceResolver
 
 from hwpx_common import (
     ToolInputError, _commit, _holds_section_definition, _refuse_dangling_ids, _renumber_endnotes, _renumber_footnotes, _section,
@@ -131,3 +133,24 @@ def insert_document_ext(
         return {**report, "firstParagraphIndex": after_paragraph_index + 1 if at_front else total, "targetSectionIndex": target_index, "warnings": warnings}
 
     return _commit(filename, expected_revision, dry_run, apply)
+
+
+_BACKUP_NAME = re.compile(r"(.+)\.(?i:hwpx\.bak)(\.\d+)?")
+
+
+def delete_backups_ext(folder: str = "", dry_run: bool = False) -> dict[str, Any]:
+    """Delete the backup files (`<name>.hwpx.bak`, `<name>.hwpx.bak.1` ...) that editing tools leave next to documents, directly inside one allowed folder (subfolders are not searched).
+    Only regular files named like that are removed - never documents, other files or symbolic links. Deleted backups cannot be restored and undo_last_edit no longer works for those documents.
+    folder: the folder to clean (a path inside an allowed folder); empty = the first allowed folder. dry_run=true only lists what would be deleted.
+    Returns the folder, the deleted file names (`deleted`), their `count` and `dry_run`."""
+    try:
+        path = WorkspaceResolver.from_environment().resolve(folder or ".", must_exist=True)
+    except (WorkspacePathError, FileNotFoundError) as error:
+        raise ToolInputError("folder must be an existing folder inside an allowed folder (no '..', no links leading outside)") from error
+    if not path.is_dir():
+        raise ToolInputError("folder is not a folder")
+    names = sorted(e.name for e in os.scandir(path) if e.is_file(follow_symlinks=False) and _BACKUP_NAME.fullmatch(e.name))
+    if not dry_run:
+        for name in names:
+            os.unlink(path / name)
+    return {"folder": str(path), "deleted": names, "count": len(names), "dry_run": dry_run}
