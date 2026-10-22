@@ -1,7 +1,7 @@
 """호출 예시(tool use examples): 스키마만으로 쓰는 법이 분명치 않은 도구마다 현실적인 예시 1~3개. hwpx_tool_schema 응답의 `examples`로 나간다.
 
 tests/test_hwpx_lazy.py가 모든 예시를 도구의 인수 모델에 대어 보고, dry_run이 있는 도구는 시험 문서에 실제로 돌려 본다(낡은 예시는 여기서 걸린다).
-예시의 문서는 `exam.hwpx`, 문단 번호는 그 시험 문서 기준: 0 구역 정의, 1 빈 줄, 2 제목, 3 1번 문제, 4 선택지, 5 세포 주기, 6 마지막 문단, 표 0번.
+예시의 문서는 `exam.hwpx`, 문단 번호는 그 시험 문서 기준: 0 구역 정의, 1 빈 줄, 2 제목, 3 1번 문제(미주 1번), 4 선택지, 5 세포 주기(끝에 수식), 6 마지막 문단(각주 1번), 7 표 0번(3×3), 8 표 1번(2×3, 0번 바로 아래), 머리말 0번.
 """
 from typing import Any
 
@@ -119,5 +119,50 @@ EXAMPLES: dict[str, list[dict[str, Any]]] = {
     ],
     "undo_last_edit": [
         {"does": "직전 편집(한 단계) 되돌리기", "arguments": {"filename": F}},
+    ],
+    "replace_text_ext": [
+        {"does": "정답·해설 미주 안의 글까지 포함해 '③'을 '④'로 바꾸기", "arguments": {"filename": F, "find_text": "③", "replace_text": "④"}},
+        {"does": "본문과 표 칸에서만 바꾸기", "arguments": {"filename": F, "find_text": "중간고사", "replace_text": "기말고사", "scopes": ["body", "table_cells"]}},
+        {"does": "정규식으로 '2026학년도' 형태를 바꾸기(\\1은 괄호 안 글)", "arguments": {"filename": F, "find_text": "(\\d+)학년도", "replace_text": "\\1학년", "regex": True}},
+    ],
+    "edit_paragraph_text_ext": [
+        {"does": "3번 문단 앞 두 글자('1.')를 '2.'로", "arguments": {"filename": F, "paragraph_index": 3, "start": 0, "end": 2, "text": "2."}},
+        {"does": "미주 1번 첫 문단 맨 앞에 글 넣기", "arguments": {"filename": F, "endnote_number": 1, "start": 0, "text": "※ "}},
+        {"does": "제목 앞 네 글자('2026') 지우기", "arguments": {"filename": F, "paragraph_index": 2, "start": 0, "end": 4, "text": ""}},
+        {"does": "표 0번의 첫 칸에 글 넣기", "arguments": {"filename": F, "table_index": 0, "row": 0, "col": 0, "start": 0, "text": "합계"}},
+    ],
+    "split_paragraph_ext": [
+        {"does": "6번 문단을 세 번째 글자 뒤에서 둘로", "arguments": {"filename": F, "paragraph_index": 6, "position": 3}},
+    ],
+    "merge_paragraphs_ext": [
+        {"does": "4번 문단을 바로 다음(5번) 문단과 합치기", "arguments": {"filename": F, "paragraph_index": 4}},
+    ],
+    "redact_text_ext": [
+        {"does": "먼저 어디가 가려질지 미리 보기(저장 안 함)", "arguments": {"filename": F, "kinds": ["phone", "email"], "dry_run": True}},
+    ],
+    "edit_table_structure_ext": [
+        {"does": "표 0번의 두 번째 열 오른쪽에 빈 열을 넣고 표 폭 유지", "arguments": {"filename": F, "table_index": 0, "ops": [{"op": "insert_columns", "column": 1, "keep_width": True}]}},
+        {"does": "맨 아래 행 지우고 맨 위 행 위에 빈 행 넣기", "arguments": {"filename": F, "table_index": 0, "ops": [{"op": "delete_rows", "rows": [2]}, {"op": "insert_rows", "row": 0, "side": "above"}]}},
+        {"does": "첫 칸을 위아래 두 칸으로 나누기", "arguments": {"filename": F, "table_index": 0, "ops": [{"op": "split_cell", "row": 0, "col": 0, "rows": 2}]}},
+    ],
+    "split_table_ext": [
+        {"does": "표 0번을 둘째 행 앞에서 위·아래 두 표로", "arguments": {"filename": F, "table_index": 0, "row": 1}},
+    ],
+    "merge_table_with_next_ext": [
+        {"does": "표 0번과 바로 아래 표(1번)를 하나로", "arguments": {"filename": F, "table_index": 0}},
+    ],
+    "remove_header_footer_ext": [
+        {"does": "머리말만 지우기(꼬리말은 그대로)", "arguments": {"filename": F, "kind": "header"}},
+    ],
+    "sanitize_document_ext": [
+        {"does": "작성자·제목 같은 문서 속성과 미리보기 지우기(본문은 그대로)", "arguments": {"filename": F}},
+    ],
+    "delete_inline_object_ext": [
+        {"does": "3번 문단의 미주(정답·해설) 하나 지우기 - 번호는 자동으로 다시 매겨진다", "arguments": {"filename": F, "paragraph_index": 3, "kind": "endnote"}},
+        {"does": "5번 문단 끝의 수식 지우기", "arguments": {"filename": F, "paragraph_index": 5, "kind": "equation"}},
+    ],
+    "update_inline_object_ext": [
+        {"does": "5번 문단 수식의 내용을 바꾸기", "arguments": {"filename": F, "paragraph_index": 5, "kind": "equation", "properties": {"script": "{}_{2}"}}},
+        {"does": "6번 문단 그림의 너비를 20mm로(비율 유지)", "arguments": {"filename": F, "paragraph_index": 6, "kind": "picture", "properties": {"width_mm": 20}}},
     ],
 }

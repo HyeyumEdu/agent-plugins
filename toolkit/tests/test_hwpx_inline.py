@@ -381,8 +381,8 @@ def test_insert_inline_refusals_and_dry_run_leave_the_file_alone(ws, tbl):
         (dict(anchor_text="없는글", paragraph_index=0), "not found"), (dict(anchor_text="문단", occurrence=3, paragraph_index=1), "occurs 2 time"),
         (dict(anchor_text="문단", occurrence=0, paragraph_index=1), "occurrence"), (dict(anchor_text="", paragraph_index=1), "anchor_text"),
         (dict(position=1, anchor_text="문", paragraph_index=1), "exactly one of position or anchor_text"), (dict(paragraph_index=1), "exactly one of position or anchor_text"),
-        (dict(position=1), "exactly one of paragraph_index or table_index"), (dict(position=1, paragraph_index=1, table_index=0, row=0, col=0), "exactly one of paragraph_index"),
-        (dict(position=1, paragraph_index=1, row=0), "go with table_index"), (dict(position=1, table_index=0, row=0), "needs row and col"),
+        (dict(position=1), "give exactly one paragraph address group"), (dict(position=1, paragraph_index=1, table_index=0, row=0, col=0), "give exactly one paragraph address group"),
+        (dict(position=1, paragraph_index=1, row=0), "do not go with paragraph_index"), (dict(position=1, table_index=0, row=0), "needs row and col"),
         (dict(position=1, paragraph_index=99), "invalid paragraph_index"), (dict(position=1, table_index=5, row=0, col=0), "invalid table_index"),
         (dict(position=1, table_index=0, row=9, col=9), "no cell"), (dict(position=1, table_index=0, row=0, col=1, cell_paragraph_index=3), "invalid cell_paragraph_index"),
         (dict(position=1, paragraph_index=1, items=[]), "must not be empty"),
@@ -530,3 +530,22 @@ def test_replace_anchor_links_existing_text_and_turns_markers_into_objects(ws):
     assert any(o["kind"] == "equation" and o["at"] == 0 for o in hwpx_layout.read_layout(ws / "doc.hwpx", "objects", max_chars=10**9)["items"])
     with pytest.raises(hwpx_edit.ToolInputError, match="replace_anchor needs anchor_text"):
         insert_inline_ext("doc.hwpx", [{"text": "x"}], position=0, replace_anchor=True, paragraph_index=index)
+
+
+def test_insert_inline_reaches_notes_headers_and_footers(ws):
+    doc = HwpxDocument.open(ws / "doc.hwpx")
+    doc.notes.add_endnote("해설 글", paragraph=doc.paragraphs[1])
+    doc.page.set_header(text="머리말 글")
+    doc.save_to_path(ws / "doc.hwpx")
+    hwpx_inline.insert_inline_ext("doc.hwpx", [{"equation": "x^{2}"}], anchor_text="해설", endnote_number=1)
+    hwpx_inline.insert_inline_ext("doc.hwpx", [{"text": "[끼움]"}], position=0, header_index=0)
+    objects = hwpx_layout.read_layout(ws / "doc.hwpx", "objects", max_chars=10**9)["items"]
+    assert any(o["kind"] == "equation" and o.get("endnote_number") == 1 and o["at"] == 2 for o in objects)
+    notes = hwpx_layout.read_layout(ws / "doc.hwpx", "notes", max_chars=10**9)["items"][0]
+    assert notes["kind"] == "endnote" and "해설" in "".join(p["text"] for p in notes["paragraphs"])
+    import hwpx_locate
+    assert hwpx_locate.paragraph_text(hwpx_locate.resolve_paragraph(HwpxDocument.open(ws / "doc.hwpx"), header_index=0)) == "[끼움]머리말 글"
+    with pytest.raises(hwpx_inline.ToolInputError, match="a footnote cannot be placed inside"):
+        hwpx_inline.insert_inline_ext("doc.hwpx", [{"footnote": "n"}], position=0, endnote_number=1)
+    with pytest.raises(hwpx_inline.ToolInputError, match="invalid endnote_number"):
+        hwpx_inline.insert_inline_ext("doc.hwpx", [{"text": "x"}], position=0, endnote_number=5)

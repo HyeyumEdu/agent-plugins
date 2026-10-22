@@ -62,8 +62,8 @@ JSON을 쓰기 전에 `python3 ${CLAUDE_SKILL_DIR}/scripts/components.py`로 쓸
 <!-- /format -->
 
 ## 만든 뒤
-1. `python3 ${CLAUDE_SKILL_DIR}/scripts/build_exam.py 내용.json 시험지.hwpx` — 첫 줄의 요약(형식·지문·소제목·출처줄·문항·보기·배점 합·빈 문단·단 나눔 수·쪽 나눔 수; 빈 문단 수에는 제목 다음의 자동 빈 문단 1개는 들어가고, 안내문 뒤 3pt 빈 줄과 `정답과 해설` 제목은 들어가지 않는다)과 이어지는 `경고`, 나눔을 썼다면 `쪽별 추정 높이`를 사용자 요청과 맞춰 본다.
-2. `python3 ${CLAUDE_SKILL_DIR}/scripts/verify_exam.py 시험지.hwpx` — `FAIL`이 없어야 한다. `V9`(미주 형식)가 만든 형식과 맞는지도 본다.
+1. `python3 ${CLAUDE_SKILL_DIR}/scripts/build_exam.py 내용.json 시험지.hwpx` — 첫 줄의 요약(형식·지문·소제목·출처줄·문항·보기·배점 합·빈 문단·단 나눔 수·쪽 나눔 수; 빈 문단 수에는 제목 다음의 자동 빈 문단 1개는 들어가고, 안내문 뒤 3pt 빈 줄과 `정답과 해설` 제목은 들어가지 않는다)과 이어지는 `경고`, 나눔을 썼다면 `쪽별 추정 높이`를 사용자 요청과 맞춰 본다. 서로 다른 항목의 입력 오류는 한 번에 `오류:` 여러 줄로 나오니(항목마다 하나씩, 제목 오류는 맨 뒤) 모두 고친 뒤 다시 돌린다. 파일 없이 점검만 하려면 `python3 ${CLAUDE_SKILL_DIR}/scripts/build_exam.py --check 내용.json`(출력 경로 없음, 성공하면 첫 줄 경로 자리에 `(검사만 함, 파일을 만들지 않음)`이 나온다).
+2. `python3 ${CLAUDE_SKILL_DIR}/scripts/verify_exam.py 시험지.hwpx` — `FAIL`이 없어야 한다. `V9`(미주 형식)가 만든 형식과 맞는지도 본다.<!-- format:router --> 형식이 둘 이상이면 `--format 형식id`로 부품을 견줄 형식을 고른다(생략하면 기본 형식).<!-- /format -->
 3. 쪽·단 흐름은 `SKILL.md`의 "쪽·단 흐름"을 따른다.
 
 ## 기존 시험지 추출 결과(`extract_hwpx_text.py`)를 JSON으로 옮기는 법

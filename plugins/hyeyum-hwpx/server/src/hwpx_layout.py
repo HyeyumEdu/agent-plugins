@@ -178,13 +178,14 @@ def extract(path,text_chars=0):
         sec['endnotes']=[dict(text=txt(e,T(20)),paragraphs=own_paras(e)) for e in r.iter(q('hp','endNote'))]; sec['footnotes']=[dict(text=txt(e,T(20)),paragraphs=own_paras(e)) for e in r.iter(q('hp','footNote'))]
         sec['pictures']=[dict(ref=i.get('binaryItemIDRef')) for i in r.iter(q('hc','img'))]
         sc=Counter(c.tag.rsplit('}',1)[-1] for t_ in r.iter(q('hp','t')) for c in t_ if isinstance(c.tag,str)); sec['special_chars']={k:sc[k] for k in ATOM if sc[k]}  # 구역 전체의 탭·줄바꿈·특수 공백 수
-        tbl_no={t_:tbl_base+i for i,t_ in enumerate(r.iter(q('hp','tbl')))}; tbl_base+=len(tbl_no)
+        tbl_no={t_:tbl_base+i for i,t_ in enumerate(t_ for t_ in r.iter(q('hp','tbl')) if not_mirror(t_))}; tbl_base+=len(tbl_no)  # 머리말·꼬리말의 secPr 거울 복사본 안 표는 센 번호에서 뺀다(저장 때 원본 쪽으로 덮어써진다)
         # 인라인 개체: 모든 문단(본문, 표 칸, 각주/미주, 머리말/꼬리말, 글상자 안). 자리는 쓰기 도구의 인수와 같은 이름
         story={}  # 문단 묶음 이름: 각주/미주는 notes 부분의 번호 n(1부터), 머리말/꼬리말은 overview 목록의 순서(0부터)
         for tag,name in (('endNote','endnote'),('footNote','footnote')): story.update({e:(name+'_number',name,i+1) for i,e in enumerate(r.iter(q('hp',tag)))})
         for tag in ('header','footer'): story.update({e:(tag+'_index',tag,i) for i,e in enumerate(h for h in r.iter(q('hp',tag)) if not_mirror(h))})
         sec['objects']=[]; body_objs=[]; locs={}
         for p in r.iter(q('hp','p')):
+            if not not_mirror(p): continue
             par=p.getparent(); box=par.getparent() if ln(par)=='subList' else None
             if par is r: loc=dict(paragraph_index=len(body_objs))
             elif box is not None and ln(box)=='tc':
@@ -199,7 +200,7 @@ def extract(path,text_chars=0):
             sec['objects']+=[{'kind':o['kind'],**loc,**o} for o in found]
         # 표
         tabs=[]
-        for t in r.iter(q('hp','tbl')):
+        for t in (t_ for t_ in r.iter(q('hp','tbl')) if not_mirror(t_)):
             depth=sum(1 for a in t.iterancestors() if ln(a)=='tbl')
             pos=t.find(q('hp','pos')); sz=t.find(q('hp','sz')); om=t.find(q('hp','outMargin')); im=t.find(q('hp','inMargin'))
             trs=t.findall(q('hp','tr')); cells=[]

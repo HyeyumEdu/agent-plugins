@@ -1,5 +1,6 @@
 """HWPX 시험지가 references/format-spec.md 의 규칙(G1~G50, V1·V5·V9)을 지키는지 XML 로 검사한다(표준 라이브러리만).
 기본은 엄격 모드(새로 만든 시험지용). --lenient 는 한컴이 저장한 원본처럼 작은 예외가 있는 파일용.
+--format <형식 id>: G50 이 견줄 부품의 형식(생략하면 formats.json 의 기본 형식).
 출력: 규칙 ID, PASS/FAIL/WARN, 설명, 측정값. 종료 코드: FAIL·열 수 없는 파일이 있으면 1, 사용법 오류 2.
 shortcut: 표준 XML 파서라 출처를 모르는 파일은 검사하지 않는다(직접 만든·받은 시험지만), 필요하면 defusedxml 로 바꾼다."""
 import importlib.util, json, re, sys, unicodedata, zipfile, zlib
@@ -10,19 +11,21 @@ from collections import Counter
 H = '{http://www.hancom.co.kr/hwpml/2011/head}'
 P = '{http://www.hancom.co.kr/hwpml/2011/paragraph}'
 C = '{http://www.hancom.co.kr/hwpml/2011/core}'
-USAGE = '사용: python3 verify_exam.py [--lenient] 파일.hwpx [파일2.hwpx ...]'
+USAGE = '사용: python3 verify_exam.py [--lenient] [--format 형식id] 파일.hwpx [파일2.hwpx ...]'
 ln = lambda e: e.tag.rsplit('}', 1)[-1]
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def shape_check(d):  # G50: 기본 형식의 부품으로 본문 모양을 견준다. 반환 (부품에 없는 모양들, 부품을 읽지 못한 이유 또는 None)
-    # shortcut: 형식이 둘 이상이면 기본 형식의 부품만 본다 — 두 번째 형식을 더할 때 --format 인수를 넣는다
+def load_formats(): return json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
+
+
+def shape_check(d, fmt_id=None):  # G50: 형식(fmt_id, 없으면 기본 형식)의 부품으로 본문 모양을 견준다. 반환 (부품에 없는 모양들, 부품을 읽지 못한 이유 또는 None)
     try:
         sys.dont_write_bytecode = True
         spec = importlib.util.spec_from_file_location('components', Path(__file__).with_name('components.py'))
         cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
-        fs = json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
-        fmt = next((f for f in fs if f.get('default')), fs[0] if len(fs) == 1 else None)
+        fs = load_formats()
+        fmt = next((f for f in fs if f['id'] == fmt_id), None) if fmt_id else next((f for f in fs if f.get('default')), fs[0] if len(fs) == 1 else None)
         if fmt is None: return [], '기본 형식(formats.json 의 default)을 정할 수 없습니다'
         return cm.shape_problems(cm.Registry(ROOT, fmt), d.hd, d.sec), None
     except SystemExit as e: return [], f'부품을 읽지 못했습니다({str(e.code).replace("오류: ", "", 1)})'
@@ -120,7 +123,7 @@ def ptok(p_):  # 문단의 글 조각(run 이 갈려도 같은 순서): 글은 �
     return out
 
 
-def rules(d, lenient=False):
+def rules(d, lenient=False, fmt_id=None):
     """[(id, 설명, 통과여부(True/False/None=경고), 측정값)]"""
     R = []; add = lambda i, s, ok, v='': R.append((i, s, ok if ok is None else bool(ok), v))
     empty_p = lambda q: not d.txt(q).strip() and not any(True for _ in q.iter(P + 'tbl')) and not any(True for _ in q.iter(P + 'ctrl'))
@@ -238,10 +241,11 @@ def rules(d, lenient=False):
     for i, e in zip(st, ens_q):
         an = next(e.iter(P + 'autoNum'), None) if e is not None else None
         if e is None or an is None: ens.append(None); continue
-        kids = [ln(x) for x in d.body[i].findall(P + 'run')[-1]]
-        okpos &= 'ctrl' in kids and 't' in kids and kids.index('ctrl') > kids.index('t')
+        kids = list(d.body[i].findall(P + 'run')[-1])  # 발문 글이 모두 끝난 뒤: 마지막 run 안, 미주 뒤에 글 없음(글 run 뒤 흰 표시 run 이든 같은 run 의 글 뒤든)
+        cpos = next((j for j, x in enumerate(kids) if ln(x) == 'ctrl'), None)
+        okpos &= cpos is not None and not any(ln(x) == 't' and ttext(x).strip() for x in kids[cpos:])
         ens.append((int(e.get('number')), int(an.get('num')), e.get('suffixChar')))
-    add('G27', '미주 번호 = 발문 순번(number·autoNum 일치, 1부터 연속), suffixChar=41, ctrl은 발문 마지막 run의 t 뒤',
+    add('G27', '미주 번호 = 발문 순번(number·autoNum 일치, 1부터 연속), suffixChar=41, ctrl은 발문 마지막 run 안, 뒤에 글 없음',
         all(x == (k + 1, k + 1, '41') for k, x in enumerate(ens)) and okpos, f'{len(ens)}개')
     # ---- 글 안 문자·서식 표기·중복 id ----
     alltxt = [ttext(t) for t in d.sec.iter(P + 't')]
@@ -384,8 +388,12 @@ def rules(d, lenient=False):
                and it_ is not None and int(it_.get('pos')) == pr['L'] + abs(pr['F']) and pr['F'] < 0)
         if not ok_: bad49.append(d.txt(p_)[:8])
     add('G49', '선택지: 원문자 바로 뒤에 탭 1개, 탭 정지 = left+|intent| (첫 줄 본문 시작 = 둘째 줄 시작, 번호 뒤 간격이 선택지마다 같음)' + ('(원본 검사: 골든은 공백이라 건너뜀)' if lenient else ''), lenient or not bad49, f'위반 {len(bad49)}개 {bad49[:3]}')
-    p50, e50 = ([], None) if lenient else shape_check(d)  # 부품 밖 모양은 에이전트가 도구로 덧붙인 서식이라 막지 않고 알린다(WARN). 부품을 못 읽으면 설치 문제라 FAIL
+    p50, e50 = ([], None) if lenient else shape_check(d, fmt_id)  # 부품 밖 모양은 에이전트가 도구로 덧붙인 서식이라 막지 않고 알린다(WARN). 부품을 못 읽으면 설치 문제라 FAIL
     add('G50', '본문 문단·글자·표 테두리 모양이 모두 등록된 부품의 모양과 같음(다르면 등록되지 않은 서식이 들어간 것)' + ('(원본 검사는 건너뜀)' if lenient else ''), False if e50 else (None if p50 else True), [e50] if e50 else p50[:3])
+    mk = [r for i in st for r in d.body[i].findall(P + 'run') if r.find('.//' + P + 'endNote') is not None]
+    bad51 = [(d.cp[r.get('charPrIDRef')].get('textColor'), d.size(r.get('charPrIDRef'))) for r in mk
+             if (d.cp[r.get('charPrIDRef')].get('textColor'), d.size(r.get('charPrIDRef'))) != ('#FFFFFF', 1.0) or any(ttext(t).strip() for t in r.findall(P + 't'))]
+    add('G51', '발문의 미주 표시는 글 없는 흰색(#FFFFFF) 1pt run 에 따로 있음(문제지에서 안 보이게)' + ('(원본 검사: 골든은 검정이라 건너뜀)' if lenient else ''), lenient or (len(mk) == len(st) and not bad51), f'위반 {len(bad51)}개 {bad51[:3]}')
     sizes = Counter(d.size(c) for p in d.body for t, c in d.runs(p) if t.strip() and not d.inside(p, 'endNote'))
     add('V1', '본문 글자 크기(보고용)', True, dict(sizes.most_common(3)))
     add('V5', '선택지 줄간격(보고용)', True, sorted({p['ls'] for p in cps}))
@@ -393,8 +401,16 @@ def rules(d, lenient=False):
 
 
 def main(argv):
+    argv = list(argv); fmt_id = None
+    if '--format' in argv:  # `--format 형식id`: 값이 없으면 사용법 오류
+        i = argv.index('--format'); fmt_id = argv[i + 1] if i + 1 < len(argv) else None; del argv[i:i + 2]
+        if fmt_id is None: print(USAGE); return 2
     lenient = '--lenient' in argv; files = [a for a in argv if a != '--lenient']
     if not files or any(a in ('-h', '--help') for a in argv): print(USAGE); return 2
+    if fmt_id is not None:  # 없는 형식은 파일을 열기 전에 사용법 오류로 알린다(--lenient 는 G50 을 건너뛰어 나중에는 못 잡는다)
+        try: ids = [f['id'] for f in load_formats()]
+        except (OSError, ValueError, KeyError, TypeError) as e: print(f'formats.json 을 읽지 못했습니다({type(e).__name__}: {e})'); return 2
+        if fmt_id not in ids: print(f'오류: --format은 {", ".join(ids)} 중 하나여야 합니다(받은 값: {fmt_id})'); return 2
     bad = 0
     for path in files:
         print('###', path)
@@ -402,7 +418,7 @@ def main(argv):
             d = Doc(path)
         except ValueError as e: print(f'  열 수 없는 파일: {e}'); bad += 1; continue
         try:
-            res = rules(d, lenient)
+            res = rules(d, lenient, fmt_id)
         except (KeyError, AttributeError, IndexError, StopIteration, TypeError, ValueError, ZeroDivisionError) as e:
             print(f'  FAIL  검사 중 구조 오류({type(e).__name__}: {e}) — 헤더 참조나 필수 요소가 빠진 파일일 수 있습니다'); bad += 1; continue
         for i, s, ok, v in res:

@@ -78,6 +78,92 @@ class T(unittest.TestCase):
         for bad in (('--part',), ('--parts', 'x')):
             code, o = run(BUILD, src, dst, *bad); self.assertEqual(code, 1); self.assertIn('사용:', o)
 
+    def skill_copy(self, edit=None):  # 스킬 폴더 사본. edit 이 있으면 사본의 formats.json 목록을 그 함수로 고친다
+        cp = self.d / 'sk'
+        if not cp.exists(): shutil.copytree(SKILL, cp, ignore=shutil.ignore_patterns('__pycache__'))
+        if edit:
+            fj = cp / 'assets/formats.json'; fl = json.loads((SKILL / 'assets/formats.json').read_text(encoding='utf8')); edit(fl); fj.write_text(json.dumps(fl, ensure_ascii=False), encoding='utf-8')
+        return cp
+
+    def test_layout_in_formats_json_drives_estimates(self):  # 한 단 폭·본문 높이·본문 글자 크기는 코드가 아니라 형식의 layout 에서 읽는다
+        lay = json.loads((SKILL / 'assets/formats.json').read_text(encoding='utf8'))[0]['layout']
+        self.assertEqual(lay, dict(col_width=201.26, body_height=657.61, font_size=10))   # basic 값 = 이전에 코드에 있던 상수
+        code_ = (SKILL / 'scripts/build_exam.py').read_text(encoding='utf8'); self.assertNotIn('201.26', code_); self.assertNotIn('657.61', code_)   # 상수를 코드에 다시 두지 않는다
+        src = self.d / 'in.json'; src.write_text(json.dumps(EX['basic'], ensure_ascii=False), encoding='utf-8')
+        def go(**kw):
+            cp = self.skill_copy(lambda fl: fl[0]['layout'].update(kw)); code, o = run(cp / 'scripts/build_exam.py', src, self.d / 'l.hwpx'); self.assertEqual(code, 0, o); return o
+        pages = lambda o: re.search(r'^쪽별 추정 높이\(.*흐름\): (.*)$', o, re.M).group(1)
+        base = go(); self.assertIn('한 단 658', base); self.assertNotIn('경고:', base)
+        small = go(body_height=400)   # 본문 높이를 줄이면 요약 수치와 단 넘침 경고가 달라진다
+        self.assertIn('한 단 400', small); self.assertRegex(small, r'경고: 1쪽 왼쪽 단: 추정 \d+pt가 한 단\(400pt\)을 넘습니다'); self.assertEqual(pages(small), pages(base))
+        self.assertNotEqual(pages(go(col_width=100)), pages(base))   # 폭이 좁으면 줄이 늘어 높이가 커진다
+        self.assertNotEqual(pages(go(font_size=20)), pages(base))
+
+    def test_layout_followed_by_each_height_site(self):  # 안내문·지문·발문 높이 어림이 각각 layout 의 폭·글자 크기를 따른다(한 곳만 옛 값으로 두면 그 입력의 쪽별 높이가 안 달라진다)
+        long = '가나다라마바사 ' * 40
+        def spec(kind):   # 그 종류의 글만 길게. 안내문과 지문은 섞지 않는다(안내문 높이는 글자 크기에 비례해 지문·발문 시험을 흐린다)
+            lead = {'instr': [{'type': 'instruction', 'text': '※ ' + long + '물음에 답하시오.'}], 'passage': [{'type': 'passage', 'paras': [long]}], 'stem': []}[kind]
+            q1, q2 = self.q(stem=long + '것은?' if kind == 'stem' else '옳은 것은?'), self.q(stem='옳은 것은?')   # 발문은 한 줄이라 다른 사용처를 흐리지 않는다
+            for q in (q1, q2): q.pop('bogi', None)
+            return self.spec(title=['제목'], items=lead + [q1, {'type': 'column_break'}, q2])
+        def pages(kind, **lay):
+            src = self.d / 'in.json'; src.write_text(json.dumps(spec(kind), ensure_ascii=False), encoding='utf-8')
+            cp = self.skill_copy(lambda fl: fl[0]['layout'].update(lay)); code, o = run(cp / 'scripts/build_exam.py', src, self.d / 'o.hwpx'); self.assertEqual(code, 0, o)
+            return re.search(r'^쪽별 추정 높이\(.*흐름\): (.*)$', o, re.M).group(1)
+        for kind in ('instr', 'passage', 'stem'):
+            base = pages(kind)
+            for k, v in (('col_width', 1e6), ('font_size', 1)): self.assertNotEqual(pages(kind, **{k: v}), base, f'{kind}: 높이 어림이 layout.{k} 를 따르지 않습니다')
+
+    def test_layout_missing_or_invalid_is_error(self):  # layout 이 없거나 키가 빠지거나 숫자가 아니면 어느 형식의 어느 키가 왜 틀렸는지 알린다(검사는 만들 때만 — 생성기는 layout 이 없는 가짜 형식으로도 돈다: test_plugin_router_with_two_formats)
+        src = self.d / 'in.json'; src.write_text(json.dumps(EX['basic'], ensure_ascii=False), encoding='utf-8'); dst = self.d / 'ok.hwpx'   # dst: 성공 빌드의 출력. bad() 는 따로 오류용 경로를 써서 시험 안의 순서와 무관하다
+        def bad(edit, *expect, src=src):
+            cp = self.skill_copy(edit); code, o = run(cp / 'scripts/build_exam.py', src, self.d / 'bad.hwpx')
+            self.assertEqual(code, 1, o); self.assertNotIn('Traceback', o, o); self.assertFalse((self.d / 'bad.hwpx').exists())
+            for e in expect: self.assertIn(e, o, o)
+        bad(lambda fl: fl[0].pop('layout'), '형식 "basic"에 layout이 없습니다', 'col_width', 'body_height', 'font_size')
+        for v, shown in (([201.26, 657.61, 10], '[201.26, 657.61, 10]'), ('201.26', "'201.26'"), (None, 'None')):   # 값이 있어도 객체가 아니면 "없다"가 아니라 "객체가 아니다"
+            bad(lambda fl: fl[0].update(layout=v), '형식 "basic"의 layout이 객체가 아닙니다', f'받은 값: {shown}')
+        nofmt = self.d / 'nofmt.json'; s0 = self.spec(); del s0['format']; nofmt.write_text(json.dumps(s0, ensure_ascii=False), encoding='utf-8')   # 형식이 하나뿐이면 format 생략 가능 — 그 경로도 layout 을 검사한다
+        bad(lambda fl: fl[0].pop('layout'), '형식 "basic"에 layout이 없습니다', src=nofmt)
+        bad(lambda fl: fl[0].update(layout=[]), '형식 "basic"의 layout이 객체가 아닙니다', src=nofmt)
+        for k in ('col_width', 'body_height', 'font_size'):
+            bad(lambda fl: fl[0]['layout'].pop(k), f'형식 "basic"의 layout.{k}', '키가 없음')
+            bad(lambda fl: fl[0]['layout'].update({k: '10'}), f'형식 "basic"의 layout.{k}', "받은 값: '10'")
+            bad(lambda fl: fl[0]['layout'].update({k: True}), f'형식 "basic"의 layout.{k}', '받은 값: True')
+            bad(lambda fl: fl[0]['layout'].update({k: 0}), f'형식 "basic"의 layout.{k}', '0보다 큰 숫자')
+            bad(lambda fl: fl[0]['layout'].update({k: -5.5}), f'형식 "basic"의 layout.{k}', '0보다 큰 숫자')
+            bad(lambda fl: fl[0]['layout'].update({k: float('nan')}), f'형식 "basic"의 layout.{k}', '0보다 큰 숫자')
+        for w in (16, 11.3, 10):   # 한 단 폭이 줄 폭에서 빼는 여백(발문 16, 지문 11.3)보다 커야 한다: 아니면 줄 수 어림이 0으로 나눈다
+            bad(lambda fl: fl[0]['layout'].update(col_width=w), '형식 "basic"의 layout.col_width', '16pt보다 커야 합니다', f'받은 값: {w!r}')
+        cp = self.skill_copy(lambda fl: fl[0]['layout'].update(col_width=16.5)); code, o = run(cp / 'scripts/build_exam.py', src, dst); self.assertEqual(code, 0, o)   # 여백 바로 위는 통과
+        s = self.spec(format='fake')   # layout 이 없는 다른 형식이 목록에 있어도 고른 형식만 검사한다
+        def fake(fl): fl.append(dict({k: v for k, v in fl[0].items() if k != 'layout'}, id='fake', default=False))
+        cp = self.skill_copy(fake); code, o = run(cp / 'scripts/build_exam.py', src, dst); self.assertEqual(code, 0, o)
+        src.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8'); code, o = run(cp / 'scripts/build_exam.py', src, dst); self.assertEqual(code, 1); self.assertIn('형식 "fake"에 layout이 없습니다', o)
+        self.assertTrue(dst.exists()); bad(lambda fl: fl[0].pop('layout'), '형식 "basic"에 layout이 없습니다', src=nofmt)   # 앞의 성공 빌드가 출력을 만들어 둔 뒤의 오류 사례도 같은 결과
+
+    def test_component_error_stops_at_once(self):  # 부품 오류(입력 JSON 탓이 아님)는 항목 오류처럼 모으지 않고 바로 멈춘다 — 문항마다 같은 줄이 되풀이되지 않는다
+        cp = self.skill_copy(lambda fl: fl[0]['parts'].pop('note')); src = self.d / 'in.json'; dst = self.d / 'pc.hwpx'
+        self.assertGreaterEqual(sum(i['type'] == 'question' for i in EX['basic']['items']), 2); src.write_text(json.dumps(EX['basic'], ensure_ascii=False), encoding='utf-8')
+        code, o = run(cp / 'scripts/build_exam.py', src, dst)
+        self.assertEqual(code, 1, o); self.assertNotIn('Traceback', o, o); self.assertIn("부품 자리 'note'", o); self.assertEqual(len(o.strip().splitlines()), 1, o); self.assertFalse(dst.exists())
+
+    def test_verify_format_option(self):  # verify_exam.py --format <형식 id>: G50 이 견줄 부품의 형식. 생략하면 기본 형식(지금과 같다)
+        _, _, p = self.build(EX['basic'], 'vf.hwpx'); plain = self.verify(p); self.assertEqual(plain[0], 0, plain[1])
+        self.assertEqual(self.verify(p, '--format', 'basic'), plain)
+        lenient = self.verify(p, '--lenient'); self.assertEqual(lenient[0], 0)
+        self.assertEqual(self.verify(p, '--lenient', '--format', 'basic'), lenient); self.assertEqual(self.verify(p, '--format', 'basic', '--lenient'), lenient)
+        for flags in (('--format', 'nope'), ('--lenient', '--format', 'nope')):   # 없는 형식은 파일을 열기 전에 사용법 오류(2)
+            code, out = self.verify(p, *flags); self.assertEqual(code, 2, out); self.assertNotIn('Traceback', out); self.assertIn('--format은', out); self.assertIn('basic', out); self.assertIn('nope', out); self.assertNotIn('###', out)
+        for args in (('--format',), (p, '--format')):   # 값이 없으면 사용법
+            code, out = run(VERIFY, *args); self.assertEqual(code, 2, out); self.assertTrue(out.startswith('사용:')); self.assertIn('--format', out)
+        self.assertIn('[--format 형식id]', run(VERIFY)[1])
+        def broken(fl): fl.append(dict(fl[0], id='broken', default=False, parts={**fl[0]['parts'], 'stem': 'no-such-part'}))   # 부품을 읽을 수 없는 두 번째 형식
+        v = self.skill_copy(broken) / 'scripts/verify_exam.py'
+        self.assertEqual(run(v, p), plain); self.assertEqual(run(v, '--format', 'basic', p), plain)   # 안 주면 기본(basic) 형식
+        code, out = run(v, '--format', 'broken', p); self.assertEqual(code, 1, out); self.assertRegex(out, r'G50\s+FAIL.*부품을 읽지 못했습니다'); self.assertNotIn('Traceback', out)   # 준 형식의 부품을 본다
+        self.assertEqual(run(v, '--lenient', '--format', 'broken', p)[0], 0)   # --lenient 는 G50 을 건너뛴다
+
     def test_choice_geometry_from_header(self):  # 선택지 줄 폭·탭은 부품이 가리키는 문단·글자 모양에서 나온다
         sys.path.insert(0, str(SKILL / 'scripts')); import build_exam as be
         f = json.loads((SKILL / 'assets/formats.json').read_text(encoding='utf8'))[0]; reg = be.CM.Registry(SKILL, f)
@@ -126,6 +212,80 @@ class T(unittest.TestCase):
         code, out = run(BUILD, p, p); self.assertNotEqual(code, 0); self.assertIn('덮어', out); self.assertTrue(p.read_text(encoding='utf-8').startswith('{'))
         code, out = run(BUILD, self.d / 'nope.json', self.d / 'o.hwpx'); self.assertIn('입력 파일이 없습니다', out); self.assertNotIn('Traceback', out)
 
+    # ---- 항목 오류를 모아서 알림 · --check ----
+    def parts(self):  # 예시의 안내문·지문·문항 하나씩(깊은 복사)
+        it = {i['type']: i for i in self.spec()['items']}; return copy.deepcopy(it['instruction']), copy.deepcopy(it['passage']), self.q()
+
+    def errs(self, items, **top):  # 빌드가 실패할 때의 `오류:` 줄 목록(다른 줄·트레이스백은 없어야 한다)
+        code, out, _ = self.build(self.spec(items=items, **top), check=False)
+        self.assertEqual(code, 1, out); self.assertNotIn('Traceback', out, out)
+        lines = out.splitlines(); self.assertTrue(all(l.startswith('오류:') for l in lines), out); return lines
+
+    def test_independent_item_errors_reported_together(self):
+        I, P, Q = self.parts(); bad1, bad2 = self.q(choices=['가.'] * 4), self.q(answer=9)
+        e = self.errs([I, P, bad1, bad2]); self.assertEqual(len(e), 2); self.assertIn('문항 1.choices', e[0]); self.assertIn('문항 2.answer', e[1])
+        self.assertEqual(self.errs([I, P, bad1, Q]), ['오류: 문항 1.choices: 선택지는 5개의 목록이어야 합니다(받은 개수: 4)'])  # 하나뿐이면 예전과 같은 한 줄
+        e = self.errs([I, {'type': 'instruction', 'text': ''}, P, {'type': 'blank', 'n': 0}, bad2, {'type': 'end_heading'}, Q], title=['a'] * 4)  # 항목 오류·항목 간 규칙·제목 오류가 차례로
+        self.assertEqual(len(e), 5, e)
+        for line, word in zip(e, ('안내문 글이 비어', '(blank).n', '문항 1.answer', '마지막 항목', '최대 3줄')): self.assertIn(word, line)
+        e = self.errs([I, P], title=['a'] * 4); self.assertEqual(len(e), 2); self.assertIn('하나도 없습니다', e[0]); self.assertIn('최대 3줄', e[1])  # 제목 오류는 맨 뒤
+        self.assertEqual(self.errs([I, P, Q], title=['a'] * 4), ['오류: 제목은 최대 3줄입니다'])  # 제목 오류만 있을 때는 예전과 같다
+        e = self.errs([I, P, Q, {'type': 'zzz'}, {'type': 'blank', 'n': 0}], format='D'); self.assertEqual(len(e), 1); self.assertIn('format은', e[0])   # 항목 밖 오류(format)는 모으지 않고 바로 멈춘다
+
+    def test_no_cascading_errors_after_a_failed_item(self):
+        I, P, Q = self.parts(); cb = {'type': 'column_break'}; bad_instr = {'type': 'instruction', 'text': ''}
+        for bad in ({'type': 'blank', 'n': 0}, {'type': 'passage', 'paras': 'x'}, self.q(answer=9), {'type': 'question', 'zzz': 1}):  # 걸린 나눔은 틀린 항목도 받은 것으로 친다
+            self.assertEqual(len(self.errs([I, P, Q, cb, bad, cb, Q])), 1, bad)
+        for items in ([bad_instr, P, Q], [I, P, Q, bad_instr, P, Q], [bad_instr, {'type': 'blank'}, P, Q]): self.assertEqual(len(self.errs(items)), 1, items)
+        for bad in (bad_instr, {'type': 'instruction', 'text': 5}, {'type': 'instruction', 'text': '다음 글을 읽고 물음에 답하시오.', 'zzz': 1}):   # 틀린 안내문 뒤의 정상 지문·문항은 가짜 오류를 만들지 않는다: 오류는 그 안내문 하나뿐
+            for items in ([bad, P, Q], [I, P, Q, bad, P, Q], [bad, {'type': 'blank'}, P, Q]): e = self.errs(items); self.assertEqual(len(e), 1, (bad, items)); self.assertIn('(instruction)', e[0])
+        self.assertEqual(len(self.errs([I, P, {'type': 'question', 'zzz': 1}])), 1)   # 검사에 실패한 문항도 센다: "문항이 하나도 없습니다"가 아니다
+        e = self.errs([I, P, {'type': 'question', 'zzz': 1}, self.q(answer=9), Q]); self.assertEqual(len(e), 2); self.assertIn('문항 2.answer', e[1])   # 번호는 실제 순서대로
+        e = self.errs([bad_instr, cb, P, Q]); self.assertEqual(len(e), 2); self.assertIn('안내문과 지문 사이', e[1])   # 고쳐도 남는 오류(안내문 바로 뒤 나눔)는 함께 나온다
+        for items in ([I, P, {'type': 'qustion'}], [I, {'type': 'pasage'}, cb, Q], [I, P, Q, cb, {'type': 'zzz'}, cb, Q], [I, P, 5], [I, P, {'type': ['x']}]): self.assertEqual(len(self.errs(items)), 1, items)   # 종류를 모르는 항목은 지문·문항처럼 친다(문항이었을 수 있어 "문항이 하나도 없음"도 말하지 않는다)
+        e = self.errs([I, P] + [self.q(answer=9)] * 6); self.assertEqual(len(e), 6)   # 문항이 모두 틀려도(정답 쏠림 어림이 빈 목록을 만나지 않게) 문항마다 한 줄
+
+    def test_check_mode_makes_no_file_and_matches_build(self):
+        s = self.spec(title=['예시 \x0b고2', '둘째 줄']); src = self.d / 'in.json'; src.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
+        code, built = run(BUILD, src, self.d / 'b.hwpx'); self.assertEqual(code, 0, built); files = sorted(p.name for p in self.d.iterdir())
+        code, chk = run(BUILD, '--check', src); self.assertEqual(code, 0, chk); self.assertEqual(sorted(p.name for p in self.d.iterdir()), files)   # 새 파일이 없다
+        b, c = built.splitlines(), chk.splitlines()
+        self.assertTrue(c[0].startswith('(검사만 함, 파일을 만들지 않음): ')); self.assertEqual(c[0].split(': ', 1)[1], b[0].split(': ', 1)[1]); self.assertEqual(c[1:], b[1:])   # 요약 첫 줄 뒤는 빌드와 같다
+        self.assertTrue(any(l.startswith('경고:') for l in c) and any(l.startswith('쪽별 추정 높이') for l in c), chk)
+        q = [i for i in s['items'] if i['type'] == 'question']; q[0]['answer'] = 9; q[1]['choices'] = ['가.'] * 4   # 오류 입력: 같은 출력, 종료 코드 1
+        src.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8'); c1, o1 = run(BUILD, src, self.d / 'e.hwpx'); c2, o2 = run(BUILD, '--check', src)
+        self.assertEqual((c2, o2), (c1, o1)); self.assertEqual((c2, o2.count('오류:')), (1, 2)); self.assertEqual(sorted(p.name for p in self.d.iterdir()), files)
+        for bad in ((), (src, self.d / 'x.hwpx'), (src, '--parts'), ('--help',)):   # --check 는 입력 JSON 하나만 받는다
+            code, o = run(BUILD, '--check', *bad); self.assertEqual(code, 1); self.assertIn('사용:', o); self.assertNotIn('Traceback', o)
+        code, o = run(BUILD, src, '--check'); self.assertEqual(code, 1); self.assertIn('사용:', o); self.assertEqual(sorted(p.name for p in self.d.iterdir()), files)
+
+    # ---- 항목 종류 표(ITEMS) ----
+    def items_table(self):  # 빌더를 모듈로 불러 항목 종류 표를 읽는다
+        spec = importlib.util.spec_from_file_location('build_exam_items', BUILD); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m.ITEMS
+
+    def test_items_table_matches_exam_json_doc(self):  # 새 항목 종류는 ITEMS 와 exam-json.md "items 항목" 표의 type 열에 함께 올린다
+        lines = (SKILL / 'references/exam-json.md').read_text(encoding='utf-8').split('## items 항목', 1)[1].splitlines()
+        tbl = []
+        for l in lines[next(i for i, l in enumerate(lines) if l.startswith('|')):]:
+            if not l.startswith('|'): break
+            tbl.append(l)
+        doc = {x.strip().strip('`') for l in tbl[2:] for x in l.split('|')[1].split(',')}   # 머리줄·구분줄을 빼고 첫 칸(한 칸에 둘 이상이면 `,`로 나뉜다)
+        self.assertEqual(set(self.items_table()), doc)
+
+    def test_items_table_entries_have_keys_and_handler(self):
+        for t, (keys, fn) in self.items_table().items():
+            self.assertIsInstance(keys, (set, frozenset), t); self.assertIn('type', keys, t); self.assertTrue(callable(fn), t)
+
+    def test_gap_state_carries_between_items(self):  # 안내문 뒤 3pt 빈 줄 상태(안내문 바로 다음 자리인가·이미 넣었는가)는 항목 처리 함수들 사이로 이어진다
+        I, P, Q = self.parts(); bl = {'type': 'blank'}
+        for items, gaps in (([I, P, Q], 1), ([I, bl, P, Q], 1), ([I, bl, I, P, Q], 2), ([I, bl, bl, P, Q], 2), ([I, P, bl, bl, Q], 1), ([I, Q, bl, Q], 0)):   # 3pt 빈 줄(charPr 31) 개수
+            _, _, p = self.build(self.spec(items=items)); self.assertEqual(self.sec(p).count('<hp:run charPrIDRef="31"/>'), gaps, [i['type'] for i in items])
+
+    def test_item_type_and_key_error_messages(self):  # 오류 안내의 값 목록과 순서는 ITEMS 에서 나온다
+        I, P, Q = self.parts()
+        self.assertEqual(self.errs([I, P, Q, {'type': 'zzz'}]), ['오류: 4번째 항목(zzz): 알 수 없는 type입니다 — 쓸 수 있는 값: blank, instruction, passage, question, end_heading, column_break, page_break'])
+        self.assertEqual(self.errs([I, P, Q, {'type': 'blank', 'x': 1}]), ["오류: 4번째 항목(blank): 알 수 없는 항목 ['x'] — 쓸 수 있는 항목: ['n', 'type']"])
+
     def test_bom_ok_and_ctrl_chars_removed_and_new_output_dir(self):
         raw = b'\xef\xbb\xbf' + json.dumps(EX['basic'], ensure_ascii=False).encode('utf-8')
         self.build(None, raw=raw)
@@ -149,7 +309,7 @@ class T(unittest.TestCase):
         s = self.spec(); q = [i for i in s['items'] if i['type'] == 'question'][1]
         q['bogi'] = {'lines': ['가' * 94]}; _, _, p = self.build(s)
         hs = re.findall(r'<hp:tbl id="\d+"[^>]*>\s*<hp:sz width="20038" widthRelTo="ABSOLUTE" height="(\d+)"', self.sec(p))
-        self.assertEqual(int(hs[0]), (1 + 5) * 1250 + 2 * 250 + 800)
+        self.assertEqual(int(hs[0]), (1 + 5) * 1600 + 2 * 250 + 800)  # 보기 줄간격 160%
 
     def test_column_break_allowed_with_warning(self):
         s = self.spec(); s['items'] = [i for i in s['items'] if i['type'] not in ('column_break', 'page_break')]  # 나눔을 모두 빼고 하나만 다시 넣는다
@@ -195,6 +355,9 @@ class T(unittest.TestCase):
             'nbsp': (ch(lambda a, t: a + '\u00a0'), 'G19'),
             'tab': (ch(lambda a, t: a + t + '가\t'), 'G28'),
             'dup_instId': (lambda s: s.replace('instId="1100000002"', 'instId="1100000001"'), 'G30'),
+            'note_marker_black': (lambda s: re.sub(r'<hp:run charPrIDRef="\d+">(<hp:ctrl><hp:endNote)', r'<hp:run charPrIDRef="37">\1', s, count=1), 'G51'),
+            'note_marker_text': (lambda s: re.sub(r'(<hp:run charPrIDRef="\d+">)(<hp:ctrl><hp:endNote)', r'\1<hp:t>가</hp:t>\2', s, count=1), 'G51'),
+            'text_after_note': (lambda s: s.replace('</hp:endNote></hp:ctrl><hp:t/>', '</hp:endNote></hp:ctrl><hp:t>가</hp:t>', 1), 'G27'),
             'score_mismatch': (lambda s: s.replace('정답 ③   [3.6점]', '정답 ③   [9.9점]'), 'G31'),
             'no_end_heading': (lambda s: s.replace('정답과 해설', '해설'), 'G35'),
             'heading_not_page_top': (lambda s: s.replace('pageBreak="1"', 'pageBreak="0"'), 'G35'),
@@ -457,6 +620,7 @@ class T(unittest.TestCase):
         out = self.d / 'all'
         code, msg = run(SKILL.parent / 'build_plugin.py', '--all', out); self.assertEqual(code, 0, msg)
         self.check_plugin_skills(out, {'exam-basic': ['basic']})
+        self.assertNotIn('--format 형식id', (out / 'exam-basic/references/exam-json.md').read_text(encoding='utf8'))   # 형식이 하나뿐인 스킬에는 둘 이상일 때의 안내(router 구역)가 없다
 
     def test_plugin_router_with_two_formats(self):  # 형식을 더 낼 때를 위한 라우터 생성 경로: 복사본에 가짜 형식을 더해 시험한다
         src = self.d / 'src'; shutil.copytree(SKILL, src / SKILL.name); shutil.copy2(SKILL.parent / 'build_plugin.py', src)
@@ -477,6 +641,8 @@ class T(unittest.TestCase):
         self.only_own_format(out / 'exam-fake', ('`basic`', '기본 시험지', 'pp41', 'pp62', '형식 고르기'))
         basic = (out / 'exam-basic/SKILL.md').read_text(encoding='utf8'); self.assertNotIn('FAKE ONLY', basic); self.assertIn('다른 형식이 필요하면 /hyeyum-hwpx:exam-format', basic)
         self.assertEqual(len(json.loads((out / 'exam-format/assets/formats.json').read_text(encoding='utf8'))), 2)
+        for sk, has in (('exam-format', True), ('exam-basic', False), ('exam-fake', False)):   # `--format 형식id` 안내는 router 구역이라 형식 고르기 스킬에만 있다
+            self.assertEqual('--format 형식id' in (out / sk / 'references/exam-json.md').read_text(encoding='utf8'), has, sk)
         s = self.spec(); del s['format']; amb = self.d / 'amb.json'; amb.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
         code, o = run(out / 'exam-format/scripts/build_exam.py', amb, self.d / 'amb.hwpx'); self.assertNotEqual(code, 0); self.assertIn('format(형식 이름)을 적어야', o)   # 라우터에서는 형식을 골라 적어야 한다
         code, o = run(out / 'exam-format/scripts/detect_format.py', self.d / 'exam-format_basic.hwpx'); self.assertEqual(code, 0, o); self.assertIn('형식 판별', o)
@@ -577,7 +743,7 @@ class T(unittest.TestCase):
         code, out = run(VERIFY, self.d / 'crc.hwpx', good); self.assertNotIn('Traceback', out); self.assertIn('###', out.split('###', 2)[2] and '###'); self.assertEqual(out.count('###'), 2)
         # 미주에만 배점이 있는 C 파일, mimetype 내용
         _, _, c2 = self.build(EX['basic'], 'c2.hwpx'); import re
-        m = self.mutate(c2, lambda s: re.sub(r' \[\d+\.\d점\]</hp:t><hp:ctrl><hp:endNote', '</hp:t><hp:ctrl><hp:endNote', s), 'noscore.hwpx')
+        m = self.mutate(c2, lambda s: re.sub(r' \[\d+\.\d점\](</hp:t></hp:run><hp:run charPrIDRef="\d+"><hp:ctrl><hp:endNote)', r'\1', s), 'noscore.hwpx')
         code, out = run(VERIFY, m); self.assertIn('G31', [l for l in out.splitlines() if 'FAIL' in l and 'G31' in l][0])
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', self.d); self.assertNotIn('Traceback', out)
         code, out = run(SKILL / 'scripts/extract_hwpx_text.py', '--help'); self.assertIn('사용:', out)
@@ -790,19 +956,23 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         self.assertTrue(self.C.shape_problems(r, hd, sec(61, 5))[0].startswith('글자 모양 5 ('))
         self.assertEqual(len(self.C.shape_problems(r, hd, sec(61, 53, 16))), 1)  # 표와 칸이 같은 테두리를 가리켜도 한 줄
 
-    # ---- basic 부품 폴더(템플릿 번호가 곧 계약: 빌더·검사기가 역할 이름으로 이 번호를 받는다) ----
+    # ---- basic 부품 폴더(템플릿 번호, 템플릿에 없는 모양은 덧붙인 번호가 곧 계약: 빌더·검사기가 역할 이름으로 이 번호를 받는다) ----
     BASIC = {'title': {'line': (61, 53)}, 'blank': {'line': (0, 0)}, 'gap-3pt': {'line': (0, 31)}, 'instruction': {'line': (0, 10)},
              'passage-border': {'body': (32, 0), 'bold': (None, 10), 'underline': (None, 32), 'label': (None, 3), 'summary': (None, 3), 'source': (43, 3)},
-             'stem': {'stem': (62, 37), 'negation': (None, 38)},
-             'bogi-box': {'outer': (53, 0), 'label': (54, 41), 'line_poem': (85, 0), 'line_prose': (55, 0), 'bold': (None, 10), 'underline': (None, 32), 'source': (42, 3)},
-             'choice5': {'choice': (41, 0)}, 'answer-note': {'first': (0, 0), 'answer': (None, 39), 'row': (47, 0), 'head': (None, 40), 'wrong_title': (48, None), 'wrong': (49, 0)},
+             'stem': {'stem': (90, 37), 'negation': (None, 38), 'marker': (None, 58)},
+             'bogi-box': {'outer': (92, 0), 'label': (93, 41), 'line_poem': (95, 0), 'line_prose': (94, 0), 'bold': (None, 10), 'underline': (None, 32), 'source': (91, 3)},
+             'choice5': {'choice': (96, 0)}, 'answer-note': {'first': (0, 0), 'answer': (None, 39), 'row': (47, 0), 'head': (None, 40), 'wrong_title': (48, None), 'wrong': (49, 0)},
              'end-heading': {'heading': (0, 12)}}
 
     def basic_fmt(self): return json.loads((SKILL / 'assets/formats.json').read_text(encoding='utf-8'))[0]
 
-    def test_basic_components_resolve_identically_on_template(self):
-        reg = self.C.Registry(SKILL, self.basic_fmt())
-        self.assertTrue(reg.resolve(self.HDR) == self.HDR)  # 부품 모양이 모두 템플릿에 이미 있다 → 헤더 문자열 그대로
+    def test_basic_components_resolve_on_template(self):
+        reg = self.C.Registry(SKILL, self.basic_fmt()); h = reg.resolve(self.HDR)
+        # 템플릿(골든 헤더)은 그대로 두고, 템플릿에 없는 줄간격 160% 문단 7개(발문·보기 5·선택지)와 흰색 1pt 미주 표시 글자 1개만 끝에 덧붙는다
+        cnt = lambda x, t: int(re.search(rf'<hh:{t} itemCnt="(\d+)"', x).group(1))
+        self.assertEqual((cnt(h, 'paraProperties') - cnt(self.HDR, 'paraProperties'), cnt(h, 'charProperties') - cnt(self.HDR, 'charProperties')), (7, 1))
+        for t in ('paraPr', 'charPr'):
+            for e in re.findall(rf'<hh:{t} id=.*?</hh:{t}>', self.HDR, re.S): self.assertIn(e, h)
         self.assertEqual({p.id for p in reg.order}, set(self.BASIC))
         for p in reg.order:
             self.assertEqual(set(p.roles), set(self.BASIC[p.id]) | ({'table', 'cell'} if p.id == 'bogi-box' else set()), p.id)
@@ -833,7 +1003,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         self.assertTrue(head.endswith('hasNumRef="0">') and head.count('<hp:subList') == 1 and tail.startswith('</hp:subList><hp:cellAddr'))
         x = reg.parts['bogi'].body({'본문': ''})
         self.assertNotIn('{{', x); ET.fromstring(f'<r xmlns:hp="x">{x}</r>'.encode('utf-8'))
-        for a in ('treatAsChar="1"', 'rowCnt="1" colCnt="1"', 'width="20038"', '<hp:p id="0" paraPrIDRef="53" styleIDRef="0"', 'cellSpacing="0" borderFillIDRef="8"',
+        for a in ('treatAsChar="1"', 'rowCnt="1" colCnt="1"', 'width="20038"', '<hp:p id="0" paraPrIDRef="92" styleIDRef="0"', 'cellSpacing="0" borderFillIDRef="8"',
                   'editable="0" dirty="0" borderFillIDRef="9"', '<hp:run charPrIDRef="0"><hp:tbl', '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0"></hp:subList>'):
             self.assertIn(a, x, a)
         self.assertEqual(len(reg.parts['note'].body_xml.split('<hp:p ')) - 1, 9)

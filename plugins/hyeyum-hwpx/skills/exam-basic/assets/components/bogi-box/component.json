@@ -43,7 +43,7 @@
   "fit": {
     "width": 189.4,
     "size": 10,
-    "mult": 1.25,
+    "mult": 1.6,
     "fixed": 800,
     "extra": 250,
     "floor": 0
