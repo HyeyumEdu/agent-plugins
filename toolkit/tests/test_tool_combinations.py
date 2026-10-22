@@ -15,8 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum
 import hwpx_docops  # noqa: E402
 import hwpx_edit  # noqa: E402
 import hwpx_layout  # noqa: E402
+import hwpx_objects  # noqa: E402
 import hwpx_page  # noqa: E402
 import hwpx_styles  # noqa: E402
+import hwpx_textedit  # noqa: E402
 
 
 @pytest.fixture()
@@ -50,7 +52,7 @@ def test_random_tool_mix_keeps_the_document_sound(ws, seed):
         index = rng.randrange(1, len(text))
         length = len(text[index])
         before_counts, before_text = counts(ws), list(text)
-        choice = rng.choice(["format_text", "format_para", "style", "insert_eq", "insert_text", "footnote", "add", "copy"])
+        choice = rng.choice(["format_text", "format_para", "style", "insert_eq", "insert_text", "footnote", "add", "copy", "replace", "edit_text", "split_merge", "delete_obj", "update_obj"])
         if choice == "format_text" and length > 1:
             start = rng.randrange(0, length - 1)
             hwpx_edit.format_text_ext("doc.hwpx", index, start, rng.randrange(start + 1, length + 1), **rng.choice([{"bold": True}, {"italic": True}, {"font_size": 12}, {"letter_spacing": -3}]))
@@ -76,6 +78,34 @@ def test_random_tool_mix_keeps_the_document_sound(ws, seed):
         elif choice == "add":
             hwpx_edit.add_paragraphs_ext("doc.hwpx", [{"runs": [{"text": "새 "}, {"equation": "a+b"}, {"text": " 끝"}]}], before_index=rng.randrange(1, len(text) + 1))
             assert counts(ws)["equation"] == before_counts["equation"] + 1
+        elif choice == "replace" and length > 1:
+            start = rng.randrange(0, length - 1)
+            word = before_text[index][start:start + 2]
+            result = hwpx_textedit.replace_text_ext("doc.hwpx", word, "ZZ")
+            assert counts(ws) == before_counts  # a text replacement never touches tabs, notes, equations
+            assert result["replaced"] + len(result.get("skipped", [])) == result["matched"] and (result["replaced"] == 0 or any("ZZ" in line for line in body_text(ws)))
+        elif choice == "edit_text":
+            position = rng.randrange(0, length + 1)
+            hwpx_textedit.edit_paragraph_text_ext("doc.hwpx", start=position, text="[편집]", paragraph_index=index)
+            expected = list(before_text)
+            expected[index] = before_text[index][:position] + "[편집]" + before_text[index][position:]
+            assert body_text(ws) == expected and counts(ws) == before_counts
+        elif choice == "split_merge" and length > 1:
+            hwpx_textedit.split_paragraph_ext("doc.hwpx", position=rng.randrange(1, length), paragraph_index=index)
+            assert len(body_text(ws)) == len(before_text) + 1 and counts(ws) == before_counts
+            hwpx_textedit.merge_paragraphs_ext("doc.hwpx", paragraph_index=index)
+            assert body_text(ws) == before_text and counts(ws) == before_counts  # split then merge gives the paragraph back
+        elif choice in ("delete_obj", "update_obj"):
+            here = [item for item in hwpx_layout.read_layout(ws / "doc.hwpx", "objects", max_chars=10**9)["items"]
+                    if item.get("paragraph_index") == index and item["kind"] in ("equation", "footnote", "endnote")]
+            if here and choice == "delete_obj":
+                kind = here[0]["kind"]
+                tag = {"endnote": "endNote", "footnote": "footNote", "equation": "equation"}[kind]
+                hwpx_objects.delete_inline_object_ext("doc.hwpx", kind=kind, nth=1, paragraph_index=index)
+                assert counts(ws)[tag] == before_counts[tag] - 1 and body_text(ws) == before_text  # the object goes, its neighbors' text and tabs stay
+            elif here and any(item["kind"] == "equation" for item in here):
+                hwpx_objects.update_inline_object_ext("doc.hwpx", kind="equation", properties={"script": "y^{3}"}, paragraph_index=index)
+                assert counts(ws) == before_counts and body_text(ws) == before_text
         else:
             hwpx_docops.copy_paragraphs_ext("doc.hwpx", index, index, before_index=index)
             assert len(body_text(ws)) == len(before_text) + 1

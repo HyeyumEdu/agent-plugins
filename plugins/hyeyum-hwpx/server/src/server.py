@@ -19,6 +19,10 @@ from hwpx_page import add_page_control_ext, set_page_options_ext
 from hwpx_styles import apply_style_ext, define_style_ext, set_list_format_ext
 from hwpx_docops import copy_paragraphs_ext, delete_backups_ext, insert_document_ext
 from hwpx_inline import insert_inline_ext
+from hwpx_objects import delete_inline_object_ext, update_inline_object_ext
+from hwpx_parts import remove_header_footer_ext, sanitize_document_ext
+from hwpx_tables import edit_table_structure_ext, merge_table_with_next_ext, split_table_ext
+from hwpx_textedit import edit_paragraph_text_ext, merge_paragraphs_ext, redact_text_ext, replace_text_ext, split_paragraph_ext
 from hwpx_common import ToolInputError, patch_error_messages
 from hwpx_edit import add_endnote_ext, add_paragraphs_ext, format_table_ext, format_text_ext, set_columns_ext, set_paragraph_format_ext, set_tab_attributes
 
@@ -53,7 +57,10 @@ def install(roots: list[str] | None = None) -> None:
     patch_error_messages()
     writes = (set_paragraph_format_ext, format_text_ext, set_tab_attributes, add_endnote_ext, format_table_ext, set_columns_ext, add_paragraphs_ext,
               apply_style_ext, define_style_ext, set_list_format_ext, set_page_options_ext, add_page_control_ext,
-              copy_paragraphs_ext, insert_document_ext, insert_inline_ext, delete_backups_ext)
+              copy_paragraphs_ext, insert_document_ext, insert_inline_ext, delete_backups_ext,
+              replace_text_ext, edit_paragraph_text_ext, split_paragraph_ext, merge_paragraphs_ext, redact_text_ext,
+              edit_table_structure_ext, split_table_ext, merge_table_with_next_ext, remove_header_footer_ext, sanitize_document_ext,
+              delete_inline_object_ext, update_inline_object_ext)
     for fn in (hwpx_read_layout, *writes):
         hwpx_lazy.register(upstream.mcp, TOOLS, fn, fn.__doc__, fn in writes)
 

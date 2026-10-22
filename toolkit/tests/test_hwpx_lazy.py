@@ -91,6 +91,11 @@ def test_every_tool_can_be_found_by_its_own_name_and_by_its_first_description_li
     ("들여쓰기 내어쓰기", "set_paragraph_format_ext"), ("하이퍼링크", "insert_inline_ext"), ("바탕쪽", "set_page_options_ext"), ("스타일 만들기", "define_style_ext"),
     ("표 테두리", "format_table_ext"), ("문단 삭제", "delete_paragraph"), ("쪽 감추기", "add_page_control_ext"), ("개인정보", "scan_personal_info"),
     ("백업 지우기", "delete_backups_ext"), ("백업 파일 삭제", "delete_backups_ext"), ("백업 정리", "delete_backups_ext"), (".bak 지우기", "delete_backups_ext"),
+    ("미주 글 바꾸기", "replace_text_ext"), ("정답 해설 고치기", "replace_text_ext"), ("글자 삭제", "edit_paragraph_text_ext"), ("문단 나누기", "split_paragraph_ext"),
+    ("문단 합치기", "merge_paragraphs_ext"), ("열 추가", "edit_table_structure_ext"), ("표 행 삭제", "edit_table_structure_ext"), ("칸 나누기", "edit_table_structure_ext"),
+    ("표 나누기", "split_table_ext"), ("표 합치기", "merge_table_with_next_ext"), ("머리말 지우기", "remove_header_footer_ext"), ("개인정보 가리기", "redact_text_ext"),
+    ("작성자 지우기", "sanitize_document_ext"), ("각주 하나 지우기", "delete_inline_object_ext"), ("수식 고치기", "update_inline_object_ext"), ("그림 크기 바꾸기", "update_inline_object_ext"),
+    ("책갈피 이름 바꾸기", "update_inline_object_ext"),
 ])
 def test_korean_task_words_lead_to_the_right_tool(srv, query, expected):
     server, lazy, _ = srv
@@ -239,21 +244,28 @@ def exam_root(srv):
     import struct
     import zlib
     _, _, root = srv
+    raw = b"".join(b"\x00" + bytes([200, 60, 60]) * 8 for _ in range(8))
+    chunk = lambda tag, data: struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    logo = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
     doc = HwpxDocument.new()
     doc.add_paragraph("")                                             # 1 빈 줄
     doc.add_paragraph("2026학년도 1학기 국어 중간고사")                   # 2 제목
-    doc.add_paragraph("1. 다음 글을 읽고 물음에 답하시오. 등대의 불빛은 멀리서 반짝였다.")  # 3 문제
+    question = doc.add_paragraph("1. 다음 글을 읽고 물음에 답하시오. 등대의 불빛은 멀리서 반짝였다.")  # 3 문제 (미주 1번)
     doc.add_paragraph("①\t첫째 선택지입니다 ②\t둘째 선택지입니다")            # 4 선택지(탭)
-    doc.add_paragraph("세포 주기는 G기 → S기 → M기 이다.")                 # 5
-    doc.add_paragraph("마지막 문단입니다.")                               # 6
+    cycle = doc.add_paragraph("세포 주기는 G기 → S기 → M기 이다.")          # 5 (글 끝에 수식)
+    last = doc.add_paragraph("마지막 문단입니다.")                         # 6 (각주 1번, 그림)
     doc.add_paragraph("").add_table(3, 3, width=30000, height=3000)     # 7 표 0번
+    doc.add_paragraph("").add_table(2, 3, width=30000, height=2000)     # 8 표 1번(0번 바로 아래, 같은 열)
+    doc.notes.add_endnote("정답 ③ 등대의 불빛", paragraph=question)
+    cycle.add_equation("{}_{1}")
+    last.add_footnote("각주 글")
+    last.add_picture(doc.media.add_image(logo, "png"), width=3000, height=3000)
+    doc.page.set_header(text="2026학년도 국어")                          # 머리말 0번
     doc.save_to_path(root / "exam.hwpx")
     other = HwpxDocument.new()
     other.add_paragraph("끼울 문서의 글")
     other.save_to_path(root / "other.hwpx")
-    raw = b"".join(b"\x00" + bytes([200, 60, 60]) * 8 for _ in range(8))
-    chunk = lambda tag, data: struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-    (root / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    (root / "logo.png").write_bytes(logo)
     return root
 
 

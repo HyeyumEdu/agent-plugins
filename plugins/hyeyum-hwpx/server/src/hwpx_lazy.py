@@ -61,6 +61,12 @@ _HINTS = {
     "set_paragraph_format_ext": "문단 줄나눔·공백최소·테두리·탭 정지·내어쓰기·쪽 나눔", "set_tab_attributes": "탭 글자 속성", "set_table_cell_text": "표 칸 글 바꾸기", "split_table_cell": "표 칸 나누기",
     "start_workflow": "작업 흐름 시작", "table_compute": "표 계산", "undo_last_edit": "직전 편집 되돌리기(한 단계)", "validate_document_plan": "문서 계획 검증", "verify_form_fill": "양식 채우기 검증",
     "verify_question_splits": "문항이 쪽·단에서 잘리는지 검사", "verify_toc": "차례 검증",
+    "replace_text_ext": "정답·해설(미주)·각주·머리말·표 칸까지 글 고치기·바꾸기(서식 유지)", "edit_paragraph_text_ext": "한 문단의 글자 범위 삽입·삭제·바꾸기(미주·표 칸 포함)",
+    "split_paragraph_ext": "문단을 글자 위치에서 둘로 나누기", "merge_paragraphs_ext": "문단을 바로 다음 문단과 합치기",
+    "redact_text_ext": "주민번호·전화·이메일·카드번호 가리기(마스킹)", "edit_table_structure_ext": "표 행·열 추가·삭제, 칸을 행×열로 나누기",
+    "split_table_ext": "표를 한 행 앞에서 둘로 나누기", "merge_table_with_next_ext": "표를 바로 아래 표와 합치기",
+    "remove_header_footer_ext": "머리말·꼬리말 지우기", "sanitize_document_ext": "작성자·제목·미리보기 지우기(배포 전 정리)",
+    "delete_inline_object_ext": "문단 안 미주·각주·수식·그림·책갈피·링크 하나 지우기", "update_inline_object_ext": "그림 크기·수식 내용·책갈피 이름·링크 주소 바꾸기·고치기",
 }
 
 #: 교사 요청 -> 쓰는 법(hwpx_find_tools 설명에 실린다).
@@ -71,7 +77,8 @@ _RECIPES = """HOW TO (teacher request -> tools):
 - 내어쓰기(hanging indent) = set_paragraph_format_ext first_line_indent_mm NEGATIVE; 탭 정지 = tab_stops [{pos_mm | pos(HWPUNIT), type}]; units: 1 mm = 283.465 HWPUNIT.
 - Order: apply a style (apply_style_ext) BEFORE local formatting - it replaces the paragraph's own shape with the style's.
 - Make an EXISTING paragraph a heading (e.g. before add_toc): apply_style_ext with style "개요 1".
-- Table: add_table, then merge_table_cells / format_table_ext (border + cells_border for every cell's lines).
+- Table: add_table, then merge_table_cells / format_table_ext (border + cells_border for every cell's lines). Existing table: edit_table_structure_ext (insert/delete rows and columns, split a cell), split_table_ext / merge_table_with_next_ext.
+- Fix an existing exam: text incl. answer/explanation endnotes, footnotes and headers = replace_text_ext (search_and_replace does not reach notes) or edit_paragraph_text_ext (one paragraph by address); remove ONE endnote/footnote/equation/picture/bookmark/link = delete_inline_object_ext; change an equation, picture size, bookmark name or link address = update_inline_object_ext. Look up the addresses and object numbers with hwpx_read_layout (part="objects" / "notes" / "tables").
 - Edit replies are compact; edits keep a backup (undo_last_edit undoes one step). Pass verbose=true to see the full verification report. A warning "placeholder-like tokens remain" only means bracketed text such as [3.6점] exists - normal in exams.
 """
 
@@ -90,6 +97,10 @@ _NOTES = {
     "mcp_server_health": ["The reply is long; the verdict is the first key and toolSurface.status (\"ok\")."],
     "delete_backups_ext": ["Deletes only backup files (name.hwpx.bak, name.hwpx.bak.N) directly in the folder, for good: undo_last_edit stops working for them. Run it with dry_run=true first and tell the user what would go."],
     "get_document_text": ["Phone numbers and similar personal data are masked by default; pass mask=false for the original text."],
+    "replace_text_ext": ["Unlike search_and_replace it also changes text inside endnotes, footnotes and headers/footers and keeps the character shapes. Look at the result with hwpx_read_layout; 0 matches does not mean the text is absent from captions, text boxes or memos."],
+    "redact_text_ext": ["Run it with dry_run=true first and tell the user how many places would be masked. The backup (.bak) next to the file still holds the original: offer delete_backups_ext after the user is satisfied."],
+    "sanitize_document_ext": ["The backup (.bak) next to the file still holds the original properties and preview: offer delete_backups_ext before the file is shared."],
+    "split_table_ext": ["Only for a table that is treated as a character (format_table_ext treat_as_char=true makes it so) and sits in a body paragraph."],
 }
 
 #: 분류 규칙: 위에서부터 처음 맞는 것. 안 맞으면 "기타"로 지도에 남는다.
@@ -104,20 +115,20 @@ _GROUPS: list[tuple[str, re.Pattern[str]]] = [
                 r"document_plan|compute_report|comparison_table|create_document_from_plan|authoring_quality")),
     ("품질 검사 (inspect)", re.compile(r"^inspect_")),
     ("쪽·구역·단·머리말 (page, section, columns, header/footer)",
-     re.compile(r"^(set_page_setup|set_page_number|set_header_footer|set_columns_ext|set_page_options_ext|add_page_control_ext|add_page_break)$")),
+     re.compile(r"^(set_page_setup|set_page_number|set_header_footer|remove_header_footer_ext|set_columns_ext|set_page_options_ext|add_page_control_ext|add_page_break)$")),
     ("표 (tables)", re.compile(r"(?:^|_)table(?:_|$)|find_cell_by_label")),
     ("서식·스타일·번호 (paragraph/character format, styles, lists)",
      re.compile(r"^(format_text|set_paragraph_format|set_tab_attributes|set_list_format)|style|_profile")),
     ("글 중간 개체·주석 (inline objects, notes, memo, toc, tracked edit)",
-     re.compile(r"^(insert_inline_ext|add_equation|insert_picture|replace_picture|add_endnote_ext|add_chart|add_memo|add_memo_by_anchor|remove_memo|"
+     re.compile(r"^(insert_inline_ext|delete_inline_object_ext|update_inline_object_ext|add_equation|insert_picture|replace_picture|add_endnote_ext|add_chart|add_memo|add_memo_by_anchor|remove_memo|"
                 r"add_cross_reference|add_toc|verify_toc|add_tracked_edit)$")),
     ("문단·문서 만들기·복제 (create, add/insert/delete/copy paragraphs)",
-     re.compile(r"^(create_document|add_paragraph|add_paragraphs_ext|add_heading|insert_paragraph|delete_paragraph|copy_paragraphs_ext|insert_document_ext)$")),
+     re.compile(r"^(create_document|add_paragraph|add_paragraphs_ext|add_heading|insert_paragraph|delete_paragraph|copy_paragraphs_ext|insert_document_ext|split_paragraph_ext|merge_paragraphs_ext)$")),
     ("글 바꾸기·편집 묶음 (replace, batch edits)",
-     re.compile(r"^(replace_|search_and_replace|batch_replace|apply_edits|apply_body_ops|apply_document_commands|run_edit_plan|byte_preserving_patch|replay_document_blueprint)")),
+     re.compile(r"^(replace_|search_and_replace|batch_replace|apply_edits|apply_body_ops|apply_document_commands|run_edit_plan|byte_preserving_patch|replay_document_blueprint|edit_paragraph_text_ext|redact_text_ext)")),
     ("읽기 (read)", re.compile(r"^(get_|find_text|query_|document_to_markdown|document_extract_json|hwpx_to_|hwpx_extract_json|hwpx_read_layout|dump_document_blueprint)")),
     ("문서 열기·복사·되돌리기·비교·점검 (documents, undo, repair, diff, health)",
-     re.compile(r"^(list_available_documents|get_document_info|mcp_server_health|describe_capabilities|copy_document|undo_last_edit|delete_backups_ext|repair_hwpx|doc_diff)$")),
+     re.compile(r"^(list_available_documents|get_document_info|mcp_server_health|describe_capabilities|copy_document|undo_last_edit|delete_backups_ext|sanitize_document_ext|repair_hwpx|doc_diff)$")),
 ]
 _OTHER = "기타 (other)"
 #: 지도 순서(자주 쓰는 것부터).
@@ -136,6 +147,8 @@ _SYNONYMS = {
     "탭 정지": "tab stops", "정지": "stop stops", "어절": "word", "글꼴": "font", "크기": "size", "굵게": "bold", "밑줄": "underline", "색": "color",
     "구분선": "separator line", "머리글": "header", "바닥글": "footer", "행": "row", "열": "column col", "칸": "cell", "넣기": "insert add", "달기": "add insert",
     "만들기": "create define add", "지우기": "delete remove", "정리": "clean delete remove", "복사": "copy", "붙여": "insert paste", "이어": "append continue", "점검": "health inspect check",
+    "나누기": "split divide", "나눠": "split divide", "합치기": "merge join", "합쳐": "merge join", "가리기": "redact mask", "마스킹": "redact mask", "가려": "redact mask",
+    "개체": "object inline", "고치기": "edit update", "수정": "edit update replace", "해설": "endnote", "정답": "endnote answer", "배포": "sanitize share", "메타데이터": "properties sanitize",
     "직인": "seal", "조직도": "organization chart", "보고서": "report government", "비교": "diff compare", "복구": "repair",
 }
 

@@ -16,12 +16,12 @@ from hwpx.errors import HwpxLookupError
 from hwpx.hwp5.section_xml import COMPOSE_CIRCLE, DUTMAL_POS
 from hwpx.oxml._document_primitives import _clear_paragraph_layout_cache, _sanitize_text
 from hwpx.oxml.namespaces import HP
-from hwpx_automation.core.content import _iter_tables
 from hwpx_automation.workspace import WorkspaceResolver
 
 from hwpx_common import (
-    _HWPUNIT_PER_MM, _RUN_KEYS, ToolInputError, _body_paragraph, _char_ref, _check_keys, _commit, _refuse_dangling_ids, _renumber_footnotes,
+    _HWPUNIT_PER_MM, _RUN_KEYS, ToolInputError, _char_ref, _check_keys, _commit, _refuse_dangling_ids, _renumber_footnotes,
 )
+from hwpx_locate import address_group, addressed, resolve_paragraph, table_at, table_indexes  # noqa: F401  (table_at, table_indexes: hwpx_edit takes them from here)
 from hwpx_runs import split_at
 
 _KINDS = ("text", "equation", "latex", "picture", "footnote", "hyperlink", "bookmark", "check_box", "ruby", "composed")
@@ -321,20 +321,6 @@ def build_table(paragraph: Any, spec: dict[str, Any]) -> Any:
         spec["rows"], spec["cols"], width=spec.get("width"), height=spec.get("height"), border_fill_id_ref=spec.get("border_fill_id")).element
 
 
-def table_at(doc: Any, table_index: int) -> Any:
-    """Table number *table_index* in document order (nested tables right after their parent), as format_table_ext counts."""
-    tables = list(_iter_tables(doc))
-    if not 0 <= table_index < len(tables):
-        raise ToolInputError(f"invalid table_index: {table_index} (the file has {len(tables)} table(s))")
-    return tables[table_index]
-
-
-def table_indexes(doc: Any, elements: list[Any]) -> list[int]:
-    """Document-order numbers (as format_table_ext counts them) of the tables whose elements are given."""
-    tables = list(_iter_tables(doc))
-    return [next(index for index, table in enumerate(tables) if table.element is element) for element in elements]
-
-
 # ---------------------------------------------------------------- insert_inline_ext
 
 def _neighbor_char(paragraph: Any, position: int) -> str | None:
@@ -348,20 +334,7 @@ def _neighbor_char(paragraph: Any, position: int) -> str | None:
     return runs[0].char_pr_id_ref if runs else None
 
 
-def _target_paragraph(doc: Any, paragraph_index: int | None, table_index: int | None, row: int | None, col: int | None, cell_paragraph_index: int | None) -> Any:
-    if table_index is None:
-        return _body_paragraph(doc, paragraph_index)
-    table = table_at(doc, table_index)
-    try:
-        cell = table.cell(row, col)
-    except (IndexError, KeyError, ValueError) as error:
-        raise ToolInputError(f"no cell at row {row}, col {col} in table {table_index}") from error
-    index = cell_paragraph_index or 0
-    if not 0 <= index < len(cell.paragraphs):
-        raise ToolInputError(f"invalid cell_paragraph_index: {index} (the cell has {len(cell.paragraphs)} paragraph(s))")
-    return cell.paragraphs[index]
-
-
+@addressed
 def insert_inline_ext(
     filename: str,
     items: list[dict[str, Any]],
@@ -375,11 +348,20 @@ def insert_inline_ext(
     row: int | None = None,
     col: int | None = None,
     cell_paragraph_index: int | None = None,
+    endnote_number: int | None = None,
+    endnote_paragraph_index: int | None = None,
+    footnote_number: int | None = None,
+    footnote_paragraph_index: int | None = None,
+    header_index: int | None = None,
+    header_paragraph_index: int | None = None,
+    footer_index: int | None = None,
+    footer_paragraph_index: int | None = None,
+    section_index: int | None = None,
     dry_run: bool = False,
     expected_revision: str | None = None,
 ) -> dict[str, Any]:
     """Insert inline items (equation, picture, footnote, hyperlink, bookmark, check box, ruby, composed character, text) into the middle of an existing paragraph, in the order given.
-    Target paragraph: body paragraph `paragraph_index` (as in hwpx_read_layout part=body), or a paragraph inside a table cell: `table_index` (as in format_table_ext), `row`, `col` (0-based) and `cell_paragraph_index` (default 0). Give one of the two.
+    Target paragraph (also inside an endnote, footnote, header or footer): {ADDRESS}
     Place: `position` (characters from the start of the paragraph text, 0..length; a tab, line break, no-break/full-width space, soft hyphen and hyperlink display text count as one character each; equations, pictures, footnotes, bookmarks and other objects count 0),
     or `anchor_text` (the items go right after its `occurrence`-th match, 1 = first; `before`=true puts them right before the match). An object already standing at the place stays in front of the new items (the new items come after it).
     replace_anchor=true (with anchor_text) REMOVES the matched text and puts the items in its place: link existing words (hyperlink item with the same text), or turn a marker like "(수식1)" into an equation; the items take the character shape of the removed text.
@@ -398,15 +380,16 @@ def insert_inline_ext(
         raise ToolInputError("replace_anchor needs anchor_text")
     if anchor_text is not None and (not isinstance(anchor_text, str) or not anchor_text or occurrence < 1):
         raise ToolInputError("anchor_text must be a non-empty string and occurrence 1 or more")
-    if (paragraph_index is None) == (table_index is None):
-        raise ToolInputError("give exactly one of paragraph_index or table_index (with row and col)")
-    if table_index is None and (row is not None or col is not None or cell_paragraph_index is not None):
-        raise ToolInputError("row, col and cell_paragraph_index go with table_index")
-    if table_index is not None and (row is None or col is None):
-        raise ToolInputError("table_index needs row and col")
+    address = dict(
+        paragraph_index=paragraph_index, table_index=table_index, row=row, col=col, cell_paragraph_index=cell_paragraph_index,
+        endnote_number=endnote_number, endnote_paragraph_index=endnote_paragraph_index, footnote_number=footnote_number,
+        footnote_paragraph_index=footnote_paragraph_index, header_index=header_index, header_paragraph_index=header_paragraph_index,
+        footer_index=footer_index, footer_paragraph_index=footer_paragraph_index,
+    )
+    address_group(**address)
 
     def apply(doc: Any) -> dict[str, Any]:
-        paragraph = _target_paragraph(doc, paragraph_index, table_index, row, col, cell_paragraph_index)
+        paragraph = resolve_paragraph(doc, section_index, **address)
         text = "".join(run.text or "" for run in paragraph.runs)  # counted as format_text_ext counts
         if anchor_text is None:
             place = position
