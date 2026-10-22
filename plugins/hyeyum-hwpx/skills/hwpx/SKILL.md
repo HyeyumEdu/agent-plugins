@@ -27,6 +27,14 @@ description: 이미 있는 한글 문서(.hwpx)를 읽거나 고칠 때 쓴다(�
 4. 새 문단은 `add_paragraphs_ext`로 문단·글자 모양 번호를 직접 지정해 만든다(`add_paragraph`는 직전 문단 모양을 물려받는다). 쪽·단 설정을 가진 첫 문단(0번) 앞에는 넣지 않는다.
 5. 고친 뒤 읽기 도구로 다시 읽어 바뀐 곳을 확인한다. 일부 도구는 대상을 못 찾아도 성공처럼 응답한다.
 
+## 요청별 도구
+`hwpx_find_tools`로 찾을 때 아래 이름을 먼저 본다(인수는 `hwpx_tool_schema`).
+- 글 바꾸기: `replace_text_ext`(미주·각주·머리말·표 칸 안까지 찾고 서식은 그대로. 정답·해설 미주를 고칠 때도 이것), 한 문단 글 고치기 `edit_paragraph_text_ext`, 문단 나누기·합치기 `split_paragraph_ext`·`merge_paragraphs_ext`.
+- 개체: 미주·각주·수식·그림·링크 하나 지우기 `delete_inline_object_ext`, 수식 내용·그림 크기·링크 주소 바꾸기 `update_inline_object_ext`.
+- 표: 행·열 넣기/지우기와 칸 나누기 `edit_table_structure_ext`, 표 나누기·다음 표와 합치기 `split_table_ext`·`merge_table_with_next_ext`.
+- 문서: 머리말·꼬리말 지우기 `remove_header_footer_ext`, 보내기 전 작성자·미리보기 정보 지우기 `sanitize_document_ext`.
+- 개인정보 가리기 `redact_text_ext`: 가린 뒤에도 백업(`.bak`)에는 원래 정보가 남는다. 다 확인했으면 백업을 지우자고 권한다(아래 "백업 파일 지우기").
+
 ## 백업과 되돌리기
 - 도구는 고치기 직전 상태를 `파일이름.hwpx.bak` 하나로 남긴다(고칠 때마다 새로 덮어쓴다).
 - 고친 뒤에는 "마음에 들지 않으면 수정 전으로 되돌릴 수 있다"고 알린다. 되돌릴 때는 `undo_last_edit`를 쓴다(한 번 더 쓰면 다시 고친 상태가 된다). 여러 번 나눠 고친 경우 되돌리면 마지막 수정 하나만 취소된다.

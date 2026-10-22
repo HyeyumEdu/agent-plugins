@@ -19,8 +19,8 @@ PREFIX = 'exam-'  # 시험지 형식 스킬 이름 = PREFIX + 형식 id
 HANDWRITTEN = {'hwpx'}  # 생성하지 않는 스킬(plugins/hyeyum-hwpx/skills/ 에서 직접 고친다)
 SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py', 'scripts/components.py']
 DOCS = ['references/exam-json.md', 'references/format-spec.md']
-USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 만들거나 기존 시험지를 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
-EXCLUDE = '서술형·단답형, 국어 외 과목, 파일 없이 채팅으로만 하는 출제, 공문 같은 일반 문서, 워드(.docx) 변환에는 쓰지 않는다.'
+USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 새로 만들거나, 기존 시험지의 내용을 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
+EXCLUDE = '서술형·단답형, 국어 외 과목, 파일 없이 채팅으로만 하는 출제, 공문 같은 일반 문서, 워드(.docx) 변환에는 쓰지 않는다. 이미 있는 한글 파일의 일부를 고치는 일은 hwpx 스킬을 쓴다.'
 BLOCK_LINES = re.compile(r'^<!-- format:([\w,-]+) -->\n(.*?)^<!-- /format -->\n', re.S | re.M)
 BLOCK_INLINE = re.compile(r'<!-- format:([\w,-]+) -->(.*?)<!-- /format -->', re.S)
 
@@ -53,7 +53,7 @@ def build(out, include_all=False):
                    + ', '.join(f'{f["title"]}(/{PLUGIN}:{PREFIX}{f["id"]})' for f in formats) + f'. {EXCLUDE}')
     skills = [dict(id=PREFIX + 'format', desc=router_desc, ids={'router'} | {f['id'] for f in formats}, formats=formats, extra=['scripts/detect_format.py'])] if router else []
     for f in formats:
-        desc = (f'{USE} {f["title"]}: {f["when"]}. {f["traits"]}. '
+        desc = (f'{USE} {f["when"]}. {f["traits"]}. '
                 + ((f'다른 형식이 필요하면 /{PLUGIN}:{PREFIX}format. ' if f.get('default') else f'형식이 다르거나 정해지지 않았으면 /{PLUGIN}:{PREFIX}format. ') if router else '') + EXCLUDE)
         skills.append(dict(id=PREFIX + f['id'], desc=desc, ids={'pinned', f['id']}, formats=[f], extra=[]))
     for s in skills:

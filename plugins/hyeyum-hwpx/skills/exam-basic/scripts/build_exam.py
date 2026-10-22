@@ -26,7 +26,8 @@ item_count, clone, add_items = CM.item_count, CM.clone, CM.add_items
 NEG, MARK, LABEL, DEF, sentence_kind = V.NEG, V.MARK, V.LABEL, V.DEF, V.sentence_kind
 
 ROOT = Path(__file__).resolve().parent.parent
-USAGE = '사용: python3 build_exam.py 내용.json 출력.hwpx      (JSON 형식: references/exam-json.md, 예시: assets/examples/)'
+USAGE = ('사용: python3 build_exam.py 내용.json 출력.hwpx      (JSON 형식: references/exam-json.md, 예시: assets/examples/)\n'
+         '      파일을 만들지 않고 검사만: python3 build_exam.py --check 내용.json')
 CIRC = '①②③④⑤'
 GA = '[가나다라마바사아자차카타파하]'  # 구분 표시 (가)~(하)
 NA = '[나다라마바사아자차카타파하]'  # 첫 구분이 아닌 (나)~(하)
@@ -35,14 +36,11 @@ CTRL = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\ufffe\uffff\ud800-\udfff
 RANGE = r'[\[［]\s*\d+\s*[~∼～〜\-–]\s*\d+\s*[\]］]'  # 문제 번호 범위 [1~3]
 INSTR_HEAD = re.compile(r'^(?:\s*(?:' + RANGE + r'|[※＊*]|\d+\s*[.)])\s*)+')  # 안내문 앞머리의 [1~3]·※·1. (여러 개)
 
-KEYS = {
-    'top': {'format', 'title', 'items', 'group_start'}, 'blank': {'type', 'n'}, 'instruction': {'type', 'text'}, 'passage': {'type', 'paras', 'source'},
-    'question': {'type', 'stem', 'answer', 'choices', 'score', 'bogi', 'note'}, 'end_heading': {'type', 'text'}, 'column_break': {'type'}, 'page_break': {'type'},
-    'bogi': {'lines', 'source', 'style'}, 'note': {'point', 'why', 'wrong'},
+KEYS = {  # 항목(items)이 아닌 객체의 키. 항목 종류별 키는 ITEMS(처리 함수 옆)에 있다
+    'top': {'format', 'title', 'items', 'group_start'}, 'bogi': {'lines', 'source', 'style'}, 'note': {'point', 'why', 'wrong'},
 }
-ITEM_TYPES = ('blank', 'instruction', 'passage', 'question', 'end_heading', 'column_break', 'page_break')
 WARNINGS = []
-COLW, BODY = 201.26, 657.61  # 한 단의 폭·본문 높이(pt) (format-spec 7절)
+STEM_PAD, PASSAGE_PAD = 16, 11.3  # 한 단 폭에서 줄 폭을 얻으려 빼는 안쪽 여백(pt): 발문 / 문단 테두리 지문. 줄 수 어림이 이 줄 폭으로 나누므로 layout.col_width 는 둘 중 큰 쪽보다 커야 한다
 
 # 선택지 줄바꿈 예측(자간 줄이기용). 번호 뒤 탭 덕에 모든 줄이 탭 정지(left+|intent|)에서 시작해 줄 폭이 같다(choice_geom).
 # 줄 폭 보정(adjust)은 골든 선택지 줄바꿈에 맞춘 값(117/117 일치)으로 부품 choice5 의 fit 에 있다.
@@ -62,7 +60,13 @@ for _v, _cs in ((.287, 'il'), (.288, 'j'), (.305, 'I'), (.315, 'J'), (.32, '!"\'
     for _c in _cs: _ADV[_c] = _v
 
 
-def fail(msg): raise SystemExit('오류: ' + msg)
+class InputError(SystemExit): pass  # 입력 JSON 오류. Build.run() 이 항목마다 이것만 모은다(부품 오류는 SystemExit 그대로 바로 멈춘다)
+
+
+ERR = '오류: '  # 오류 줄의 접두(fail 과 build 의 항목 밖 오류가 같이 쓴다)
+
+
+def fail(msg): raise InputError(ERR + msg)
 
 
 def nlines(t, size, width):  # 줄 수 어림(한글·공백 섞인 글의 평균 글자 폭 0.85em)
@@ -177,8 +181,9 @@ class ParaPrs:  # 문단 모양: keepWithNext·keepLines·탭 정의만 바꾼 �
 
 # ---------- 입력 검사 ----------
 def check_keys(obj, part, where):  # 모르는 키를 조용히 버리지 않는다(지원하지 않는 기능을 쓴 것일 수 있다)
-    extra = set(obj) - KEYS[part]
-    if extra: fail(f'{where}: 알 수 없는 항목 {sorted(extra)} — 쓸 수 있는 항목: {sorted(KEYS[part])}')
+    keys = ITEMS[part][0] if part in ITEMS else KEYS[part]
+    extra = set(obj) - keys
+    if extra: fail(f'{where}: 알 수 없는 항목 {sorted(extra)} — 쓸 수 있는 항목: {sorted(keys)}')
 
 
 def text(v, where, *, markup=False, optional=False):
@@ -235,6 +240,14 @@ def as_score(v, where):  # NaN·무한대는 범위 비교에서 걸러진다
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= 100 or Decimal(str(v)) % Decimal('0.1'):
         fail(f'{where}: score(배점)는 0보다 크고 100 이하, 소수 첫째 자리까지인 수여야 합니다(받은 값: {v!r})')
     return Decimal(str(v))
+
+
+def check_title(title):  # 제목(글 한 줄 또는 최대 3줄의 목록)을 검사·정리해 줄 목록으로 돌려준다
+    if isinstance(title, str): title = [title]
+    if not isinstance(title, list) or not title or not all(isinstance(x, str) and x.strip() for x in title): fail('title은 한 줄 이상의 글(문자열) 목록이어야 합니다')
+    title = [text(x, f'title[{i}]').strip() for i, x in enumerate(title, 1)]
+    if len(title) > 3: fail('제목은 최대 3줄입니다')
+    return title
 
 
 # ---------- XML 조립 ----------
@@ -413,8 +426,8 @@ def bogi_paras(bg, qw, g):
     return ps
 
 
-def page_heights(segs, starts):
-    """나눔으로 갈린 구간 높이(pt)를 쪽별로 묶고, 단에 넘치거나 꽉 찬 곳을 경고한다.
+def page_heights(segs, starts, body_h):
+    """나눔으로 갈린 구간 높이(pt)를 쪽별로 묶고, 단에 넘치거나 꽉 찬 곳을 경고한다(body_h: 한 단의 본문 높이).
     단 나눔 없는 쪽은 두 단에 걸쳐 흐르고, 단 나눔이 하나면 각 단이 한 단 높이에 들어가야 한다."""
     pages = []
     for h, start in zip(segs, starts):
@@ -422,11 +435,11 @@ def page_heights(segs, starts):
         pages[-1].append(h)
     for n, hs in enumerate(pages, 1):
         if len(hs) > 2: WARNINGS.append(f'{n}쪽: 단 나눔이 {len(hs) - 1}개라 단이 3개 이상 필요합니다(한 쪽은 두 단)')
-        elif len(hs) == 1 and hs[0] > 2 * BODY: WARNINGS.append(f'{n}쪽: 추정 {hs[0]:.0f}pt가 두 단({2 * BODY:.0f}pt)을 넘어 다음 쪽으로 이어집니다(어림 ±10%)')
+        elif len(hs) == 1 and hs[0] > 2 * body_h: WARNINGS.append(f'{n}쪽: 추정 {hs[0]:.0f}pt가 두 단({2 * body_h:.0f}pt)을 넘어 다음 쪽으로 이어집니다(어림 ±10%)')
         elif len(hs) == 2:
             for side, h in zip(('왼쪽', '오른쪽'), hs):
-                if h > BODY: WARNINGS.append(f'{n}쪽 {side} 단: 추정 {h:.0f}pt가 한 단({BODY:.0f}pt)을 넘습니다 — 나눔이 제자리에 오지 않을 수 있으니 내용을 줄이거나 나눔을 더하세요(어림 ±10%)')
-                elif h > 0.9 * BODY: WARNINGS.append(f'{n}쪽 {side} 단: 추정 {h:.0f}pt로 한 단({BODY:.0f}pt)에 여유가 거의 없습니다(어림 ±10%)')
+                if h > body_h: WARNINGS.append(f'{n}쪽 {side} 단: 추정 {h:.0f}pt가 한 단({body_h:.0f}pt)을 넘습니다 — 나눔이 제자리에 오지 않을 수 있으니 내용을 줄이거나 나눔을 더하세요(어림 ±10%)')
+                elif h > 0.9 * body_h: WARNINGS.append(f'{n}쪽 {side} 단: 추정 {h:.0f}pt로 한 단({body_h:.0f}pt)에 여유가 거의 없습니다(어림 ±10%)')
     return pages
 
 
@@ -434,10 +447,161 @@ def pick_format(spec):
     fs = json.loads((ROOT / 'assets/formats.json').read_text(encoding='utf-8'))
     ids = ', '.join(f'"{f["id"]}"' for f in fs)
     if 'format' in spec: f = next((f for f in fs if f['id'] == spec['format']), None)
-    elif len(fs) == 1: return fs[0]
+    elif len(fs) == 1: f = fs[0]
     else: fail(f'format(형식 이름)을 적어야 합니다 — 쓸 수 있는 값: {ids}')
     if f is None: fail(f'format은 {ids} 중 하나여야 합니다(받은 값: {spec["format"]!r})')
+    # 쪽 기하는 만들 때만 필요해서 생성기(build_plugin.py)는 보지 않고 여기서 검사한다
+    hint = '{"col_width": 한 단 폭, "body_height": 본문 높이, "font_size": 본문 글자 크기}(pt)'
+    if 'layout' not in f: fail(f'형식 "{f["id"]}"에 layout이 없습니다(assets/formats.json) — {hint}를 적어야 합니다')
+    lay = f['layout']
+    if not isinstance(lay, dict): fail(f'형식 "{f["id"]}"의 layout이 객체가 아닙니다(받은 값: {lay!r}) — {hint} 꼴이어야 합니다')
+    for k in ('col_width', 'body_height', 'font_size'):
+        v = lay.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v < float('inf'): fail(f'형식 "{f["id"]}"의 layout.{k}: 0보다 큰 숫자여야 합니다({"받은 값: " + repr(v) if k in lay else "키가 없음"})')
+    pad = max(STEM_PAD, PASSAGE_PAD)
+    if lay['col_width'] <= pad: fail(f'형식 "{f["id"]}"의 layout.col_width: 안쪽 여백({pad:g}pt)을 뺀 줄 폭이 남도록 {pad:g}pt보다 커야 합니다(받은 값: {lay["col_width"]!r})')
     return f
+
+
+class Build:  # 한 번의 빌드 상태: 항목 처리 함수(item_*)가 이것을 받아 읽고 고친다. st 는 요약용 수치(build() 가 main() 에 돌려준다), 나머지는 항목 사이로 이어지는 상태
+    def __init__(self, spec, reg, hdr, lay):
+        self.reg, self.CP, self.PP = reg, CharPrs(hdr), ParaPrs(hdr)
+        self.cg = choice_geom(hdr, reg.parts['choice'])
+        self.gs = spec.get('group_start', 'column')
+        if self.gs not in ('column', 'page', 'flow'): fail('group_start는 "column"(기본, 지문 묶음을 새 단 맨 위에서)·"page"(새 쪽 맨 위에서)·"flow"(나눔 없음) 중 하나입니다')
+        self.colw, self.body, self.fs = lay['col_width'], lay['body_height'], lay['font_size']  # 형식의 한 단 폭·본문 높이·본문 글자 크기(pt). formats.json 의 layout
+        bl = reg.use('blank'); self.blank = para(bl.pp('line'), [(bl.cp('line'), '')]); self.out = [self.blank]  # 제목 다음 빈 문단
+        tl = spec.get('title'); ntitle = len(tl) if isinstance(tl, list) and tl else 1
+        # segs/starts: 나눔으로 갈린 구간마다의 어림 높이(pt)와 그 구간이 새 쪽·단 어느 쪽에서 시작하는지
+        self.st = dict(q=0, scores=[], tbl=0, blanks=1, cbrk=0, pbrk=0, bogi=0, passage=0, sub=0, src=0, answers=[], tight=[], gbrk=0, gs=self.gs, ninstr=0, pp=self.PP, cp=self.CP,
+                       segs=[24.0 * ntitle + 16.0], starts=['page'], brk=None, reg=reg, hdr=hdr)
+        self.k, self.total = 0, len(spec['items'])  # 지금 항목 번호(1부터) / 항목 개수
+        self.after_instr = self.gap_done = False  # 안내문 바로 다음 자리인가 / 그 자리에 3pt 빈 줄을 이미 넣었는가
+        self.last_t = None  # 앞 항목의 종류
+        self.errs, self.lost = [], False  # 항목마다 하나씩 모은 입력 오류(항목 밖 오류는 모으지 않고 바로 멈춘다) / 종류를 알 수 없는 항목이 있었는가
+
+    def emit(self, x, h=0.0):  # h: 어림 높이(pt). 걸린 나눔(st['brk'])은 다음 문단이 받는다
+        st = self.st
+        if st['brk']:
+            x = x.replace(f'{st["brk"]}="0"', f'{st["brk"]}="1"', 1); st['starts'].append('page' if st['brk'] == 'pageBreak' else 'column'); st['brk'] = None; st['segs'].append(0.0)
+        st['segs'][-1] += h; self.out.append(x)
+
+    def gap(self):  # 안내문 뒤 빈 줄은 글자 3pt
+        g = self.reg.use('gap'); return para(self.PP.get(g.pp('line'), kwn=1), [(g.cp('line'), '')])
+
+    def run(self, k, it):  # 항목 하나를 검사해 종류별 처리 함수(ITEMS)에 넘긴다. 입력 오류는 모아 두고 다음 항목으로 간다
+        self.k = k
+        try:
+            if not isinstance(it, dict) or not isinstance(it.get('type'), str): fail(f'{k}번째 항목: {{"type": "..."}} 꼴이어야 합니다')
+            t = it['type']; where = f'{k}번째 항목({t})'
+            if t not in ITEMS: fail(f'{where}: 알 수 없는 type입니다 — 쓸 수 있는 값: {", ".join(ITEMS)}')
+            if t == 'question': self.st['q'] += 1  # 검사에 실패한 문항도 센다(뒤 문항의 `문항 N`이 실제 순서와 맞고 "문항이 하나도 없음"이 잘못 나지 않게)
+            check_keys(it, t, where)
+            ITEMS[t][1](self, it, where)
+            self.last_t = t
+        except InputError as e: self.recover(it, e)
+
+    def recover(self, it, e):  # 틀린 항목을 성공했을 때와 같은 항목 사이 상태로 넘겨 뒤 항목에 가짜 오류가 나지 않게 한다(종류를 모르면 지문·문항처럼 친다)
+        st = self.st; self.errs.append(str(e))
+        kind = it.get('type') if isinstance(it, dict) else None
+        if not isinstance(kind, str): kind = None  # 글이 아닌 type 은 종류를 모르는 것(ITEMS 에서 찾다 죽지 않게)
+        if kind in ITEMS: self.last_t = kind
+        else: self.lost = True
+        if kind not in ('column_break', 'page_break', 'end_heading'): st['brk'] = None  # 걸린 나눔은 이 항목이 받았을 것
+        if kind not in ('blank', 'column_break', 'page_break'): self.after_instr, self.gap_done = kind == 'instruction', False
+
+
+# ---------- 항목 종류별 처리: item_<type>(b, it, where). 입력 오류는 fail() 로 알리고, 결과는 b.emit() 과 b.st 에 쌓는다 ----------
+def item_blank(b, it, where):
+    n = as_int(it.get('n', 1), f'{where}.n', 1, 200)
+    for _ in range(n): b.emit(b.gap(), 4.8) if b.after_instr else b.emit(b.blank, 16.0)
+    if b.after_instr: b.gap_done = True
+    b.st['blanks'] += n
+
+
+def item_break(b, it, where):  # column_break·page_break: 걸어 두면 다음 문단이 새 단(쪽) 머리에서 시작한다
+    st, col = b.st, it['type'] == 'column_break'
+    if st['brk']: fail(f'{where}: 나눔 항목이 연달아 있습니다')
+    if b.after_instr: fail(f'{where}: 안내문과 지문 사이에는 나눔을 둘 수 없습니다 — 새 단(쪽)에서 시작하려면 나눔을 안내문 앞에 두세요')
+    st['brk'] = 'columnBreak' if col else 'pageBreak'; st['cbrk' if col else 'pbrk'] += 1
+
+
+def item_passage(b, it, where):
+    st = b.st
+    if b.after_instr and not b.gap_done: b.emit(b.gap(), 4.8)  # 골든: 문단 테두리 지문 앞 3pt 빈 줄(자동)
+    b.after_instr = b.gap_done = False
+    paras = it.get('paras')
+    if not isinstance(paras, list) or not paras: fail(f'{where}.paras: 문단 문자열의 목록이어야 합니다')
+    parts = prep_passage(paras, source_text(it.get('source'), f'{where}.source'), where, st)
+    ps = passage_paras(parts, passage_ids(b.reg.use('passage')), b.CP, b.last_t == 'passage', where)
+    st['passage'] += 1; st['src'] += sum(kd == 'src' for kd, _, _ in parts)
+    for x in ps: b.emit(x, nlines(re.sub(r'<[^>]+>', '', ptext(x)), b.fs, b.colw - PASSAGE_PAD) * (b.fs * 1.6))  # 문단 테두리 지문: 문단마다 본문 글자 크기×160%, 테두리 안쪽 여백 위아래 11.3pt
+    st['segs'][-1] += 11.3
+
+
+def item_instruction(b, it, where):
+    st = b.st
+    b.after_instr = b.gap_done = False
+    tx0 = text(it.get('text'), f'{where}.text')
+    core = INSTR_HEAD.sub('', tx0)  # 안내문은 번호 범위 대신 `※`로 시작한다(G42)
+    if not core.strip(): fail(f'{where}.text: 안내문 글이 비어 있습니다(예: 다음 글을 읽고 물음에 답하시오.)')
+    tx = '※ ' + core.strip()
+    if not tx.endswith('물음에 답하시오.'): WARNINGS.append(f'{where}: 안내문이 `…물음에 답하시오.`로 끝나지 않습니다(골든: ※ 다음 글을 읽고 물음에 답하시오.)')
+    if re.match(r'\s*' + RANGE, tx0): WARNINGS.append(f'{where}: 안내문 앞 문제 번호 범위를 지우고 `※`를 붙였습니다')
+    ip = b.reg.use('instruction'); ix = para(b.PP.get(ip.pp('line'), kwn=1), [(ip.cp('line'), tx)])
+    if st['ninstr'] and b.gs != 'flow' and not st['brk']:  # 첫 묶음 말고는 지문 묶음이 단(쪽) 맨 위에서 시작한다(G41)
+        st['brk'] = 'columnBreak' if b.gs == 'column' else 'pageBreak'; st['gbrk'] += 1
+    st['ninstr'] += 1
+    b.emit(ix, nlines(tx, b.fs, b.colw) * b.fs * 1.6); b.after_instr = True
+
+
+def item_end_heading(b, it, where):  # 제목 문단은 맨 끝에서 늘 자동으로 넣는다(이 항목은 검사만)
+    if b.k != b.total: fail(f'{where}: end_heading은 마지막 항목이어야 합니다(그 뒤에 미주가 모입니다)')
+    if text(it.get('text', '정답과 해설'), f'{where}.text').strip() != '정답과 해설': fail(f'{where}.text: 제목은 "정답과 해설"이어야 합니다(G35) — text를 빼도 됩니다')
+
+
+def item_question(b, it, where):  # 문항 번호(st['q'])는 검사 전에 run() 이 이미 올렸다
+    st, reg, PP, CP, cg = b.st, b.reg, b.PP, b.CP, b.cg
+    b.after_instr = b.gap_done = False
+    n = st['q']; qw = f'문항 {n}'
+    stem, ch, q = check_question(it, qw); sc = q['score']
+    st['scores'].append(sc)
+    st['answers'].append(q['answer'])
+    stp = reg.use('stem'); spid, stcp, negcp = PP.get(stp.pp('stem'), kwn=1, kl=1), stp.cp('stem'), stp.cp('negation')  # G40: 발문~④는 다음 문단과 함께, 모든 문단은 줄 단위로 쪼개지지 않게
+    tag = f' [{sc:.1f}점]'
+    pieces, pos = [], 0
+    for m in NEG.finditer(stem):  # 부정 낱말은 모두 굵게+밑줄(G15)
+        pieces += [(stcp, stem[pos:m.start()]), (negcp, m.group())]; pos = m.end()
+    pieces = [p for p in pieces if p[1]] + [(stcp, stem[pos:] + tag)]
+    sh = nlines(stem + tag, b.fs, b.colw - STEM_PAD) * (b.fs * 1.6) + 12.0  # 발문 줄간격 160%, 위 8pt+아래 4pt
+    note = f'<hp:run charPrIDRef="{stp.cp("marker")}">{note_xml(n, q, reg.use("note"))}<hp:t/></hp:run>'  # G51: 미주 표시는 흰색 1pt run 에 따로 둬 문제지에서 안 보이게
+    b.emit(p_xml(spid, ''.join(run_xml(c_, x_) for c_, x_ in pieces) + note), sh)
+    if 'bogi' in it:
+        bp = reg.use('bogi'); ps = bogi_paras(it['bogi'], qw, bogi_ids(bp))
+        st['tbl'] += 1; st['bogi'] += 1; bx, bh = fill_cell(bp, ps, st['tbl'])
+        bx = re.sub(r'paraPrIDRef="(\d+)"', lambda m_: f'paraPrIDRef="{PP.get(int(m_.group(1)), kwn=1)}"', bx, count=1)  # 보기 상자도 다음 문단과 함께
+        b.emit(bx, bh / 100 + 2.8)
+    cpt = reg.use('choice'); pp, cp = cpt.pp('choice'), cpt.cp('choice'); tabid = PP.tab(cg['left'] + cg['hang'])
+    lh, aft = b.fs * 1.6, 1.5  # 선택지 줄간격 160%
+    for i, c_ in enumerate(ch):
+        sp, nl, stuck = tighten(c_, cg)
+        if sp: st['tight'].append((n, i + 1, sp))
+        elif stuck: WARNINGS.append(f'{qw}.choices[{i + 1}]: 마지막 줄에 한 글자만 남는데 자간을 -7%까지 줄여도 안 됩니다 — 문구를 줄이세요')
+        cpp = PP.get(pp, kwn=1 if i < 4 else 0, kl=1, tab=tabid)  # ⑤에서 문항 사슬을 끊는다
+        b.emit(choice_xml(cpp, CP.get(cp, spacing=sp) if sp else cp, i, c_, cg), nl * lh + aft)
+
+
+# 항목 종류 표: type → (허용하는 키, 처리 함수). 새 항목 종류는 여기 한 줄과 item_<type> 하나로 더한다(references/exam-json.md "items 항목" 표도 함께). 순서는 오류 안내에 나오는 순서다
+# 다른 항목의 오류 판정에 쓰이는 상태(st['brk']·after_instr·st['q'])를 바꾸는 종류는 Build.recover() 의 종류 이름 튜플과 Build.run() 도 함께 확인한다
+ITEMS = {
+    'blank': ({'type', 'n'}, item_blank),
+    'instruction': ({'type', 'text'}, item_instruction),
+    'passage': ({'type', 'paras', 'source'}, item_passage),
+    'question': ({'type', 'stem', 'answer', 'choices', 'score', 'bogi', 'note'}, item_question),
+    'end_heading': ({'type', 'text'}, item_end_heading),
+    'column_break': ({'type'}, item_break),
+    'page_break': ({'type'}, item_break),
+}
 
 
 def build(spec):
@@ -448,106 +612,22 @@ def build(spec):
     if not qt or set(qt) - {'choice5'}: fail(f'이 스크립트가 모르는 문항 형식입니다: {", ".join(map(str, qt)) or "(없음)"}')
     reg = CM.Registry(ROOT, f)
     hdr = reg.resolve(zipfile.ZipFile(ROOT / 'assets/templates' / f['template']).read('Contents/header.xml').decode('utf-8'))  # 부품 모양을 헤더에 한 번에 맞춘다
-    CP, PP, cg = CharPrs(hdr), ParaPrs(hdr), choice_geom(hdr, reg.parts['choice'])
-    gs = spec.get('group_start', 'column')
-    if gs not in ('column', 'page', 'flow'): fail('group_start는 "column"(기본, 지문 묶음을 새 단 맨 위에서)·"page"(새 쪽 맨 위에서)·"flow"(나눔 없음) 중 하나입니다')
-    fs = 10  # 본문 글자 크기(pt)
-    bl = reg.use('blank'); blank = para(bl.pp('line'), [(bl.cp('line'), '')]); out = [blank]  # 제목 다음 빈 문단
-
-    def gap():  # 안내문 뒤 빈 줄은 글자 3pt
-        g = reg.use('gap'); return para(PP.get(g.pp('line'), kwn=1), [(g.cp('line'), '')])
-
-    tl = spec.get('title'); ntitle = len(tl) if isinstance(tl, list) and tl else 1
-    # segs/starts: 나눔으로 갈린 구간마다의 어림 높이(pt)와 그 구간이 새 쪽·단 어느 쪽에서 시작하는지
-    st = dict(q=0, scores=[], tbl=0, blanks=1, cbrk=0, pbrk=0, bogi=0, passage=0, sub=0, src=0, answers=[], tight=[], gbrk=0, gs=gs, ninstr=0, pp=PP, cp=CP,
-              segs=[24.0 * ntitle + 16.0], starts=['page'], brk=None, reg=reg, hdr=hdr)
-    after_instr = gap_done = False  # 안내문 바로 다음 자리인가 / 그 자리에 3pt 빈 줄을 이미 넣었는가
-    last_t = None
-
-    def emit(x, h=0.0):  # h: 어림 높이(pt). 걸린 나눔(st['brk'])은 다음 문단이 받는다
-        if st['brk']:
-            x = x.replace(f'{st["brk"]}="0"', f'{st["brk"]}="1"', 1); st['starts'].append('page' if st['brk'] == 'pageBreak' else 'column'); st['brk'] = None; st['segs'].append(0.0)
-        st['segs'][-1] += h; out.append(x)
-
-    for k, it in enumerate(items, 1):
-        if not isinstance(it, dict) or not isinstance(it.get('type'), str): fail(f'{k}번째 항목: {{"type": "..."}} 꼴이어야 합니다')
-        t = it['type']; where = f'{k}번째 항목({t})'
-        if t not in ITEM_TYPES: fail(f'{where}: 알 수 없는 type입니다 — 쓸 수 있는 값: {", ".join(ITEM_TYPES)}')
-        check_keys(it, t, where)
-        prev_t, last_t = last_t, t
-        if t == 'blank':
-            n = as_int(it.get('n', 1), f'{where}.n', 1, 200)
-            for _ in range(n): emit(gap(), 4.8) if after_instr else emit(blank, 16.0)
-            if after_instr: gap_done = True
-            st['blanks'] += n
-            continue
-        if t in ('column_break', 'page_break'):
-            if st['brk']: fail(f'{where}: 나눔 항목이 연달아 있습니다')
-            if after_instr: fail(f'{where}: 안내문과 지문 사이에는 나눔을 둘 수 없습니다 — 새 단(쪽)에서 시작하려면 나눔을 안내문 앞에 두세요')
-            st['brk'] = 'columnBreak' if t == 'column_break' else 'pageBreak'; st['cbrk' if t == 'column_break' else 'pbrk'] += 1
-            continue
-        if t == 'passage' and after_instr and not gap_done: emit(gap(), 4.8)  # 골든: 문단 테두리 지문 앞 3pt 빈 줄(자동)
-        after_instr = gap_done = False
-        if t == 'instruction':
-            tx0 = text(it.get('text'), f'{where}.text')
-            core = INSTR_HEAD.sub('', tx0)  # 안내문은 번호 범위 대신 `※`로 시작한다(G42)
-            if not core.strip(): fail(f'{where}.text: 안내문 글이 비어 있습니다(예: 다음 글을 읽고 물음에 답하시오.)')
-            tx = '※ ' + core.strip()
-            if not tx.endswith('물음에 답하시오.'): WARNINGS.append(f'{where}: 안내문이 `…물음에 답하시오.`로 끝나지 않습니다(골든: ※ 다음 글을 읽고 물음에 답하시오.)')
-            if re.match(r'\s*' + RANGE, tx0): WARNINGS.append(f'{where}: 안내문 앞 문제 번호 범위를 지우고 `※`를 붙였습니다')
-            ip = reg.use('instruction'); ix = para(PP.get(ip.pp('line'), kwn=1), [(ip.cp('line'), tx)])
-            if st['ninstr'] and gs != 'flow' and not st['brk']:  # 첫 묶음 말고는 지문 묶음이 단(쪽) 맨 위에서 시작한다(G41)
-                st['brk'] = 'columnBreak' if gs == 'column' else 'pageBreak'; st['gbrk'] += 1
-            st['ninstr'] += 1
-            emit(ix, nlines(tx, fs, COLW) * fs * 1.6); after_instr = True
-        elif t == 'end_heading':  # 제목 문단은 맨 끝에서 늘 자동으로 넣는다(이 항목은 검사만)
-            if k != len(items): fail(f'{where}: end_heading은 마지막 항목이어야 합니다(그 뒤에 미주가 모입니다)')
-            if text(it.get('text', '정답과 해설'), f'{where}.text').strip() != '정답과 해설': fail(f'{where}.text: 제목은 "정답과 해설"이어야 합니다(G35) — text를 빼도 됩니다')
-        elif t == 'passage':
-            paras = it.get('paras')
-            if not isinstance(paras, list) or not paras: fail(f'{where}.paras: 문단 문자열의 목록이어야 합니다')
-            parts = prep_passage(paras, source_text(it.get('source'), f'{where}.source'), where, st)
-            ps = passage_paras(parts, passage_ids(reg.use('passage')), CP, prev_t == 'passage', where)
-            st['passage'] += 1; st['src'] += sum(kd == 'src' for kd, _, _ in parts)
-            for x in ps: emit(x, nlines(re.sub(r'<[^>]+>', '', ptext(x)), 10, COLW - 11.3) * 16.0)  # 문단 테두리 지문: 문단마다 10pt×160%, 테두리 안쪽 여백 위아래 11.3pt
-            st['segs'][-1] += 11.3
-        elif t == 'question':
-            st['q'] += 1; n = st['q']; qw = f'문항 {n}'
-            stem, ch, q = check_question(it, qw); sc = q['score']
-            st['scores'].append(sc)
-            st['answers'].append(q['answer'])
-            stp = reg.use('stem'); spid, stcp, negcp = PP.get(stp.pp('stem'), kwn=1, kl=1), stp.cp('stem'), stp.cp('negation')  # G40: 발문~④는 다음 문단과 함께, 모든 문단은 줄 단위로 쪼개지지 않게
-            tag = f' [{sc:.1f}점]'
-            pieces, pos = [], 0
-            for m in NEG.finditer(stem):  # 부정 낱말은 모두 굵게+밑줄(G15)
-                pieces += [(stcp, stem[pos:m.start()]), (negcp, m.group())]; pos = m.end()
-            pieces = [p for p in pieces if p[1]] + [(stcp, stem[pos:] + tag)]
-            c, x = pieces[-1]
-            sh = nlines(stem + tag, fs, COLW - 16) * 12.5 + 12.0
-            emit(p_xml(spid, ''.join(run_xml(c_, x_) for c_, x_ in pieces[:-1]) + f'<hp:run charPrIDRef="{c}"><hp:t>{escape(x)}</hp:t>{note_xml(n, q, reg.use("note"))}<hp:t/></hp:run>'), sh)
-            if 'bogi' in it:
-                bp = reg.use('bogi'); ps = bogi_paras(it['bogi'], qw, bogi_ids(bp))
-                st['tbl'] += 1; st['bogi'] += 1; bx, bh = fill_cell(bp, ps, st['tbl'])
-                bx = re.sub(r'paraPrIDRef="(\d+)"', lambda m_: f'paraPrIDRef="{PP.get(int(m_.group(1)), kwn=1)}"', bx, count=1)  # 보기 상자도 다음 문단과 함께
-                emit(bx, bh / 100 + 2.8)
-            cpt = reg.use('choice'); pp, cp = cpt.pp('choice'), cpt.cp('choice'); tabid = PP.tab(cg['left'] + cg['hang'])
-            lh, aft = 12.5, 1.5
-            for i, c_ in enumerate(ch):
-                sp, nl, stuck = tighten(c_, cg)
-                if sp: st['tight'].append((n, i + 1, sp))
-                elif stuck: WARNINGS.append(f'{qw}.choices[{i + 1}]: 마지막 줄에 한 글자만 남는데 자간을 -7%까지 줄여도 안 됩니다 — 문구를 줄이세요')
-                cpp = PP.get(pp, kwn=1 if i < 4 else 0, kl=1, tab=tabid)  # ⑤에서 문항 사슬을 끊는다
-                emit(choice_xml(cpp, CP.get(cp, spacing=sp) if sp else cp, i, c_, cg), nl * lh + aft)
+    b = Build(spec, reg, hdr, f['layout'])
+    for k, it in enumerate(items, 1): b.run(k, it)
+    st, errs = b.st, b.errs
     # 정답과 해설 제목(G35): 미주가 시작하는 쪽 맨 위에 13pt 굵게. 제목 문단이 스스로 새 쪽을 연다
     pb, st['brk'] = st['brk'], None
     if pb == 'columnBreak': WARNINGS.append('맨 끝 column_break는 쓰이지 않습니다 — 정답과 해설 제목이 새 쪽을 엽니다'); st['cbrk'] -= 1
     st['starts'].append('page'); st['segs'].append(22.4)
-    hd = reg.use('heading'); out.append(para(hd.pp('heading'), [(CP.get(hd.cp('heading'), height=1300), '정답과 해설')]).replace('pageBreak="0"', 'pageBreak="1"', 1))
-    if st['q'] == 0: fail('question(문항)이 하나도 없습니다')
-    if st['q'] >= 5 and max(st['answers'].count(a) for a in set(st['answers'])) > 0.4 * st['q']:
+    hd = reg.use('heading'); b.out.append(para(hd.pp('heading'), [(b.CP.get(hd.cp('heading'), height=1300), '정답과 해설')]).replace('pageBreak="0"', 'pageBreak="1"', 1))
+    if st['q'] == 0 and not b.lost: errs.append(ERR + 'question(문항)이 하나도 없습니다')  # 종류를 모르는 항목이 문항이었을 수 있으면 말하지 않는다
+    if not errs and st['q'] >= 5 and max(st['answers'].count(a) for a in set(st['answers'])) > 0.4 * st['q']:  # 오류가 있으면 경고는 나가지 않는다(실패한 문항은 answers 에 없어 max 가 비기도 한다)
         WARNINGS.append('정답 번호가 한쪽으로 쏠려 있습니다(한 번호가 40% 초과) — 의도한 것인지 확인하세요')
-    if st['cbrk'] + st['pbrk'] + st['gbrk']: st['pages'] = page_heights(st['segs'], st['starts'])
-    return f, ''.join(out), st
+    if not errs and st['cbrk'] + st['pbrk'] + st['gbrk']: st['pages'] = page_heights(st['segs'], st['starts'], b.body)
+    try: st['title'] = check_title(spec.get('title'))  # 제목 오류도 항목 오류와 함께 알린다(항목 오류 뒤에 붙는다)
+    except InputError as e: errs.append(str(e))
+    if errs: raise SystemExit('\n'.join(errs))
+    return f, ''.join(b.out), st
 
 
 def stamp(hpf, title):  # 제목과 만든 날짜를 content.hpf 에 적는다(한컴 저장본에는 늘 날짜가 있다)
@@ -559,7 +639,7 @@ def stamp(hpf, title):  # 제목과 만든 날짜를 content.hpf 에 적는다(�
     return hpf
 
 
-def main(src, dst, parts=False):
+def main(src, dst, parts=False):  # dst 가 None 이면 --check: 같은 검사·어림을 하되 파일을 만들지 않는다
     try:
         spec = json.loads(Path(src).read_text(encoding='utf-8-sig'))
     except FileNotFoundError: fail(f'입력 파일이 없습니다: {src}')
@@ -569,37 +649,36 @@ def main(src, dst, parts=False):
     except ValueError: fail(f'{src}: JSON의 숫자가 너무 큽니다')
     except OSError as e: fail(f'{src}: 읽을 수 없습니다({e.strerror})')
     if not isinstance(spec, dict): fail('JSON 최상위는 {"format": …, "title": …, "items": […]} 꼴이어야 합니다')
-    if Path(src).resolve() == Path(dst).resolve(): fail('출력 파일이 입력 JSON과 같은 경로입니다(입력이 덮어써집니다)')
-    if not str(dst).lower().endswith('.hwpx'): WARNINGS.append('출력 파일 확장자가 .hwpx가 아닙니다 — 한글에서 열리지 않을 수 있습니다')
-    f, body, st = build(spec); reg = st['reg']
-    title = spec.get('title')
-    if isinstance(title, str): title = [title]
-    if not isinstance(title, list) or not title or not all(isinstance(x, str) and x.strip() for x in title): fail('title은 한 줄 이상의 글(문자열) 목록이어야 합니다')
-    title = [text(x, f'title[{i}]').strip() for i, x in enumerate(title, 1)]
-    if len(title) > 3: fail('제목은 최대 3줄입니다')
+    if dst is not None and Path(src).resolve() == Path(dst).resolve(): fail('출력 파일이 입력 JSON과 같은 경로입니다(입력이 덮어써집니다)')
+    if dst is not None and not str(dst).lower().endswith('.hwpx'): WARNINGS.append('출력 파일 확장자가 .hwpx가 아닙니다 — 한글에서 열리지 않을 수 있습니다')
+    f, body, st = build(spec); reg, title = st['reg'], st['title']
     tpl = zipfile.ZipFile(ROOT / 'assets/templates' / f['template'])
     sec = tpl.read('Contents/section0.xml').decode().replace('시험 제목', escape(title[0]))
     sec = re.sub(r'^<\?xml[^>]*\?>\s*', '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>', sec)  # 한컴이 저장하는 선언 형식
     tp = reg.use('title'); extra = ''.join(para(tp.pp('line'), [(tp.cp('line'), x)]) for x in title[1:])  # 둘째 줄부터
     sec = sec.replace('</hs:sec>', extra + body + '</hs:sec>')
     ET.fromstring(sec.encode())  # well-formed 확인
-    try:
-        Path(dst).parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as zo:
-            for it in tpl.infolist():
-                data = tpl.read(it.filename)
-                if it.filename == 'Contents/section0.xml': data = sec.encode()
-                elif it.filename == 'Contents/content.hpf': data = stamp(data.decode(), title).encode()
-                elif it.filename == 'Contents/header.xml': data = st['pp'].apply(st['cp'].apply(st['hdr'])).encode('utf-8')  # 부품 모양을 맞춘 헤더에 더한다
-                zo.writestr(it.filename, data, compress_type=zipfile.ZIP_STORED if it.filename == 'mimetype' else zipfile.ZIP_DEFLATED)
-    except OSError as e: fail(f'{dst}: 저장할 수 없습니다({e.strerror})')
-    print(f'{dst}: {f["title"]}({f["id"]}) | 지문 {st["passage"]}개(소제목 {st["sub"]}, 출처줄 {st["src"]}) | 문항 {st["q"]}개 | 보기 {st["bogi"]}개 | 배점 합 {sum(st["scores"]):.1f}점 | 빈 문단 {st["blanks"]}개 | 단 나눔 {st["cbrk"] + (st["gbrk"] if st["gs"] == "column" else 0)}개·쪽 나눔 {st["pbrk"] + (st["gbrk"] if st["gs"] == "page" else 0)}개(묶음 시작 자동 {st["gbrk"]}개 포함)')
+    if dst is not None:
+        try:
+            Path(dst).parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as zo:
+                for it in tpl.infolist():
+                    data = tpl.read(it.filename)
+                    if it.filename == 'Contents/section0.xml': data = sec.encode()
+                    elif it.filename == 'Contents/content.hpf': data = stamp(data.decode(), title).encode()
+                    elif it.filename == 'Contents/header.xml': data = st['pp'].apply(st['cp'].apply(st['hdr'])).encode('utf-8')  # 부품 모양을 맞춘 헤더에 더한다
+                    zo.writestr(it.filename, data, compress_type=zipfile.ZIP_STORED if it.filename == 'mimetype' else zipfile.ZIP_DEFLATED)
+        except OSError as e: fail(f'{dst}: 저장할 수 없습니다({e.strerror})')
+    print(f'{dst if dst is not None else "(검사만 함, 파일을 만들지 않음)"}: {f["title"]}({f["id"]}) | 지문 {st["passage"]}개(소제목 {st["sub"]}, 출처줄 {st["src"]}) | 문항 {st["q"]}개 | 보기 {st["bogi"]}개 | 배점 합 {sum(st["scores"]):.1f}점 | 빈 문단 {st["blanks"]}개 | 단 나눔 {st["cbrk"] + (st["gbrk"] if st["gs"] == "column" else 0)}개·쪽 나눔 {st["pbrk"] + (st["gbrk"] if st["gs"] == "page" else 0)}개(묶음 시작 자동 {st["gbrk"]}개 포함)')
     if parts: print('쓴 부품: ' + ', '.join(reg.used()))
-    if st.get('pages'): print(f'쪽별 추정 높이(pt, 어림 ±10%; 한 단 {BODY:.0f}, 단 나눔 없는 쪽은 두 단에 걸쳐 흐름): ' + ' | '.join(f'{n_}쪽 ' + ' / '.join(f'{h_:.0f}' for h_ in hs_) for n_, hs_ in enumerate(st['pages'], 1)))
+    if st.get('pages'): print(f'쪽별 추정 높이(pt, 어림 ±10%; 한 단 {f["layout"]["body_height"]:.0f}, 단 나눔 없는 쪽은 두 단에 걸쳐 흐름): ' + ' | '.join(f'{n_}쪽 ' + ' / '.join(f'{h_:.0f}' for h_ in hs_) for n_, hs_ in enumerate(st['pages'], 1)))
     if st['tight']: print('자간 줄임(선택지 마지막 줄에 한 글자만 남는 것을 막음): ' + ', '.join(f'문항 {q}-{CIRC[c - 1]} {sp}%' for q, c, sp in st['tight']))
     for w in WARNINGS: print('경고:', w)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) not in (3, 4) or sys.argv[1] in ('-h', '--help') or (len(sys.argv) == 4 and sys.argv[3] != '--parts'): raise SystemExit(USAGE)
-    main(*sys.argv[1:3], parts=len(sys.argv) == 4)
+    a = sys.argv[1:]; check = a[:1] == ['--check']  # `--check 내용.json`: 파일을 만들지 않고 검사만
+    if check: a = a[1:]
+    bad = (len(a) != 1) if check else (len(a) not in (2, 3) or (len(a) == 3 and a[2] != '--parts'))  # --check 는 인수 하나(--parts 와 함께 못 씀)
+    if bad or a[0] in ('-h', '--help') or '--check' in a: raise SystemExit(USAGE)
+    main(a[0], None if check else a[1], parts=len(a) == 3)
