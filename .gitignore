@@ -240,3 +240,6 @@ __marimo__/
 /CLAUDE.md
 /.claude/
 /.mcp.json
+
+# 출제 지침 원자료(학교·학생 정보가 들어 있다). 스킬은 plugins/hyeyum-hwpx/skills/question-writing/
+/exam-create/

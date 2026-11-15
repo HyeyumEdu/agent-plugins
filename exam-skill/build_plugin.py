@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 SRC = HERE / 'hyeyum-hwpx-format'
 PLUGIN = 'hyeyum-hwpx'
 PREFIX = 'exam-'  # 시험지 형식 스킬 이름 = PREFIX + 형식 id
-HANDWRITTEN = {'hwpx'}  # 생성하지 않는 스킬(plugins/hyeyum-hwpx/skills/ 에서 직접 고친다)
+HANDWRITTEN = {'hwpx', 'question-writing'}  # 생성하지 않는 스킬(plugins/hyeyum-hwpx/skills/ 에서 직접 고친다)
 SCRIPTS = ['scripts/build_exam.py', 'scripts/verify_exam.py', 'scripts/extract_hwpx_text.py', 'scripts/components.py']
 DOCS = ['references/exam-json.md', 'references/format-spec.md']
 USE = '국어 5지선다 시험지를 한글(.hwpx) 파일로 새로 만들거나, 기존 시험지의 내용을 이 서식으로 다시 짤 때 쓴다(시험지·문제지·중간·기말고사·모의고사·형성평가).'
