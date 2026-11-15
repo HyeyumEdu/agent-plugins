@@ -578,7 +578,7 @@ class T(unittest.TestCase):
     def test_plugin_generated_in_sync_and_self_contained(self):  # 플러그인 스킬은 원본에서 생성한 복사본이므로 원본과 어긋나면 안 된다
         plugin = SKILL.parent.parent / 'plugins/hyeyum-hwpx'; out = self.d / 'skills'
         code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
-        handwritten = {k: v for k, v in self.plugin_files(plugin / 'skills').items() if k.split('/')[0] not in ('hwpx',)}  # 직접 쓰는 스킬은 생성 대상이 아니다
+        handwritten = {k: v for k, v in self.plugin_files(plugin / 'skills').items() if k.split('/')[0] not in ('hwpx', 'question-writing')}  # 직접 쓰는 스킬은 생성 대상이 아니다
         self.assertEqual(self.plugin_files(out), handwritten, '원본을 고쳤으면 skill/build_plugin.py 를 다시 돌려 skills/ 를 갱신하세요')
         self.check_plugin_skills(out, {'exam-basic': ['basic']})
         self.assertNotIn('/hyeyum-hwpx:exam-format', (out / 'exam-basic/SKILL.md').read_text(encoding='utf8'))
@@ -1116,6 +1116,73 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         self.assertIn('부품으로 등록하지 않는다', t)  # 사용자 쪽에서는 부품을 추가하지 않는다
         self.assertNotIn('G50', t.split('5. 규칙을 검사한다')[0])  # 교사에게 보이는 앞부분에는 규칙 번호가 없다  # 교사에게 보이는 앞부분에는 규칙 번호가 없다
         self.assertIn('components.py', (out / 'exam-basic/references/exam-json.md').read_text(encoding='utf8'))
+
+
+QW = SKILL.parent.parent / 'plugins/hyeyum-hwpx/skills/question-writing'  # 출제 스킬(직접 쓰는 원본)
+
+
+class TQuestionWriting(unittest.TestCase):  # 출제 지침을 영역·단계별로 골라 주는 guide.py 와 검산 check_items.py
+    def setUp(self): self.d = Path(tempfile.mkdtemp())
+
+    def guide(self, *a): return run(QW / 'scripts/guide.py', *a)
+
+    def test_frontmatter_and_references(self):
+        md = (QW / 'SKILL.md').read_text(encoding='utf8'); head = re.match(r'---\n(.*?)\n---\n', md, re.S).group(1)
+        self.assertEqual([l.split(':')[0] for l in head.splitlines()], ['name', 'description']); self.assertIn('name: question-writing\n', md)
+        self.assertLessEqual(len(re.search(r'description: (.*)', md).group(1)), 1024)
+        for w in ('guide.py', 'check_items.py', 'exam-basic', '--only'): self.assertIn(w, md)
+        refs = {p.name for p in (QW / 'references').iterdir()}
+        for f in re.findall(r'`(\w[\w-]*\.md)`', md): self.assertIn(f, refs)  # SKILL.md 가 가리키는 지침 파일이 모두 있다
+
+    def test_every_section_tagged_and_every_stage_covered(self):
+        code, o = self.guide('--list'); self.assertEqual(code, 0, o)  # 표지 없는 절·모르는 단계가 있으면 오류로 끝난다
+        areas = re.findall(r'^### (\S+) ', o, re.M); self.assertEqual(len(areas), 9)
+        for st in ('설계', '작성', '해설', '검수'):  # 공통 지침은 모든 단계에 절이 있어 어느 영역을 불러도 빈손이 아니다
+            code, o = self.guide('공통', st); self.assertEqual(code, 0, o); self.assertNotIn('따로 없다', o, st)
+        for a in areas:
+            got = []
+            for st in ('설계', '작성', '해설', '검수'):
+                code, o = self.guide(a, st, '--only'); self.assertEqual(code, 0, o); self.assertNotIn('<!-- 단계', o)
+                got.append('따로 없다' not in o)
+            self.assertTrue(any(got), a)
+
+    def test_common_comes_with_writing_areas(self):
+        code, o = self.guide('문학', '작성'); self.assertEqual(code, 0, o)
+        self.assertLess(o.index('references/common.md'), o.index('references/literature.md'))
+        self.assertIn('## 대원칙', o); self.assertIn('## 선지 문형', o); self.assertNotIn('## 세트 구성', o)  # 설계 절은 빠진다
+        code, o = self.guide('문학', '작성', '--only'); self.assertNotIn('common.md', o)
+        code, o = self.guide('분석'); self.assertIn('references/codes.md', o); self.assertNotIn('common.md', o)
+        code, o = self.guide('화작,언어', '검수'); self.assertIn('speech-writing.md', o); self.assertIn('grammar.md', o)  # 별칭
+        self.assertEqual(o.count('references/common.md'), 1)
+        code, o = self.guide('분석'); self.assertNotIn('\n## 1. 형식', o.split('## 분석 보고서 양식')[0])  # 양식 코드 블록 안 ## 는 절이 아니다
+
+    def test_guide_rejects_unknown(self):
+        for args, msg in ((('국어',), '모르는 영역·단계'), (('설계',), '영역을 하나 이상')):
+            code, o = self.guide(*args); self.assertNotEqual(code, 0); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+
+    def test_check_items_counts(self):
+        q = lambda stem, ans, ch: {'type': 'question', 'stem': stem, 'answer': ans, 'choices': ch, 'score': 3.0}
+        long5 = ['가나다라', '가나다라', '가나다라', '가나다라', '가나다라마바사, 아자차']
+        items = [q('적절하지 않은 것은?', 5, long5) for _ in range(4)] + [q('가장 적절한 것은?', 1, ['가', '가나다', '가나다', '가나다', '가나다라는 점에서'])]
+        src = self.d / 'in.json'; src.write_text(json.dumps({'title': ['x'], 'items': [{'type': 'instruction', 'text': '※'}] + items}, ensure_ascii=False), encoding='utf-8')
+        code, o = run(QW / 'scripts/check_items.py', src); self.assertEqual(code, 0, o)
+        self.assertIn('정답 분포: ①1 ②0 ③0 ④0 ⑤4', o); self.assertIn('40% 넘는 번호: ⑤', o); self.assertIn('1~4번 ⑤', o)
+        self.assertIn('정답이 가장 긴 문항: 4/5', o); self.assertIn('정답이 가장 짧은 문항: 1/5', o)
+        self.assertIn("'라는 점에서': 1회", o); self.assertIn('긍정 발문: 20%', o); self.assertIn('5번 ① 5위', o)
+        code, o = run(QW / 'scripts/check_items.py', src, '--school'); self.assertIn("'라는 점에서': 1회 기준 0회(수능형) → 참고", o)
+        code, o = run(QW / 'scripts/check_items.py', SKILL / 'assets/examples/example_basic.json'); self.assertEqual(code, 0, o)  # exam-basic 예시 JSON 을 그대로 읽는다
+        self.assertIn('문학 기준 58~81자', o)
+        code, o = run(QW / 'scripts/check_items.py', SKILL / 'assets/examples/example_basic.json', '--area', '독서'); self.assertIn('독서 기출 중앙값 53자 → 참고', o)
+        code, o = run(QW / 'scripts/check_items.py', SKILL / 'assets/examples/example_basic.json', '--area', '기타'); self.assertIn('참고(영역 기준 없음)', o); self.assertNotIn('→ 주의\n선지 길이', o)
+        code, o = run(QW / 'scripts/check_items.py', SKILL / 'assets/examples/example_basic.json', '--area', '국어'); self.assertEqual(code, 1); self.assertIn('--area는', o)
+        for bad, msg in (({'items': [q('?', 6, long5)]}, 'answer는 1~5'), ({'items': [q('?', 1, long5[:4])]}, 'choices는 글 5개'), ({'x': 1}, '"items" 목록'), ({'items': []}, '객관식 문항')):
+            src.write_text(json.dumps(bad, ensure_ascii=False), encoding='utf-8'); code, o = run(QW / 'scripts/check_items.py', src)
+            self.assertEqual(code, 1, o); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+
+    def test_kept_by_generator(self):
+        out = self.d / 'keep'; (out / 'question-writing').mkdir(parents=True); (out / 'question-writing/SKILL.md').write_text('x', encoding='utf-8')
+        code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
+        self.assertEqual((out / 'question-writing/SKILL.md').read_text(encoding='utf8'), 'x')
 
 
 if __name__ == '__main__':
