@@ -303,14 +303,22 @@ name = "hyeyum-hwpx-toolkit-mcp"
 version = "1.4.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "anyio" },
+    { name = "cryptography" },
+    { name = "mcp" },
+    { name = "pydantic" },
     { name = "python-hwpx" },
-    { name = "python-hwpx-automation", extra = ["mcp"] },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.0" },
+    { name = "cryptography", specifier = ">=42.0" },
+    { name = "mcp", specifier = "==1.28.1" },
+    { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "python-hwpx", path = "wheels/python_hwpx-6.8.0-py3-none-any.whl" },
-    { name = "python-hwpx-automation", extras = ["mcp"], specifier = "==7.3.4" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
 ]
 
 [[package]]
@@ -800,27 +808,6 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev'", specifier = ">=4.0" },
 ]
 provides-extras = ["visual", "xlsx", "preview", "dev", "test", "typecheck"]
-
-[[package]]
-name = "python-hwpx-automation"
-version = "7.3.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "cryptography" },
-    { name = "pydantic" },
-    { name = "python-hwpx" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/bb/03f0d009ebdcf40a78920af1039de8e5ba03c84d3f50792d432f30a6fb0c/python_hwpx_automation-7.3.4.tar.gz", hash = "sha256:f9674ad54e18c8d326b19a510417871f4263e344923b27ece6ef89c0f4d93bcc", size = 751387, upload-time = "2026-10-06T05:44:32.303Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/c2/22944ad74894ef3d59bb7e634948c5ea1bb859a7bd3d01bc439b25ac8292/python_hwpx_automation-7.3.4-py3-none-any.whl", hash = "sha256:48abd00f10e0924c44499c3e101c0c58d838908385a19a56c3a9a6def965c2b2", size = 852872, upload-time = "2026-10-06T05:44:30.416Z" },
-]
-
-[package.optional-dependencies]
-mcp = [
-    { name = "mcp" },
-]
 
 [[package]]
 name = "python-multipart"

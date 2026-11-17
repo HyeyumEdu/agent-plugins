@@ -24,7 +24,7 @@ jobs:
       - name: Server environment
         run: |
           uv venv --python 3.12 venv
-          VIRTUAL_ENV=$PWD/venv uv pip install "python-hwpx-automation[mcp]==7.3.4" plugins/hyeyum-hwpx/server/wheels/*.whl pytest
+          VIRTUAL_ENV=$PWD/venv uv pip install -r plugins/hyeyum-hwpx/server/pyproject.toml plugins/hyeyum-hwpx/server/wheels/*.whl pytest
       - name: Server tests
         run: PYTHONDONTWRITEBYTECODE=1 venv/bin/python -m pytest toolkit/tests -q -p no:cacheprovider
 

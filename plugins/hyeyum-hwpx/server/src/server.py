@@ -1,7 +1,7 @@
 """Claude Desktop 확장 진입점: 업스트림 hwpx-automation MCP 서버에 서식 읽기·확장 도구를 더해 띄운다.
 
 사용자가 설정에서 고른 폴더만 작업 영역이다(그 밖의 경로는 서버가 막는다).
-업스트림은 python-hwpx-automation==7.3.4로 고정: 아래 보정은 그 버전의 내부 구조에 기댄다.
+업스트림 python-hwpx-automation 7.3.4는 src/hwpx_automation/에 소스로 들어 있다: 아래 보정은 그 내부 구조에 기댄다.
 """
 import os
 import sys
