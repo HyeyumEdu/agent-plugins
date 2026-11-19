@@ -1152,7 +1152,7 @@ class TQuestionWriting(unittest.TestCase):  # 출제 지침을 영역·단계별
 
     def test_every_section_tagged_and_every_stage_covered(self):
         code, o = self.guide('--list'); self.assertEqual(code, 0, o)  # 표지 없는 절·모르는 단계가 있으면 오류로 끝난다
-        areas = re.findall(r'^### (\S+) ', o, re.M); self.assertEqual(len(areas), 9)
+        areas = re.findall(r'^### (\S+) ', o, re.M); self.assertEqual(len(areas), 13)
         for st in ('설계', '작성', '해설', '검수'):  # 공통 지침은 모든 단계에 절이 있어 어느 영역을 불러도 빈손이 아니다
             code, o = self.guide('공통', st); self.assertEqual(code, 0, o); self.assertNotIn('따로 없다', o, st)
         for a in areas:
@@ -1194,6 +1194,146 @@ class TQuestionWriting(unittest.TestCase):  # 출제 지침을 영역·단계별
         for bad, msg in (({'items': [q('?', 6, long5)]}, 'answer는 1~5'), ({'items': [q('?', 1, long5[:4])]}, 'choices는 글 5개'), ({'x': 1}, '"items" 목록'), ({'items': []}, '객관식 문항')):
             src.write_text(json.dumps(bad, ensure_ascii=False), encoding='utf-8'); code, o = run(QW / 'scripts/check_items.py', src)
             self.assertEqual(code, 1, o); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+
+    def test_extractor_copy_in_sync(self):  # 정답 가림용으로 복사한 추출기가 시험지 스킬 원본과 같다
+        self.assertEqual((QW / 'scripts/extract_hwpx_text.py').read_bytes(), (SKILL / 'scripts/extract_hwpx_text.py').read_bytes(),
+                         'exam-skill 의 extract_hwpx_text.py 를 고쳤으면 question-writing/scripts/ 에도 복사하세요')
+
+    def test_verify_areas_and_solver_isolation(self):
+        code, o = self.guide('검증,가림,나눠풀기'); self.assertEqual(code, 0, o); self.assertNotIn('common.md', o)
+        for w in ('## 판정 종류', '## 가리고 푸는 순서', '## 풀이자 띄우기'): self.assertIn(w, o)
+        code, o = self.guide('풀이자', '문법', '검수', '--only'); self.assertEqual(code, 0, o)  # 풀이자는 자기 몫과 판정 기준만
+        self.assertIn('## 결과 형식', o); self.assertIn('## 판정 기준: 음운 변동', o)
+        for w in ('verify.md', 'split.md', 'common.md', '## 고난도 요인', '## 보고'): self.assertNotIn(w, o)
+        md = (QW / 'SKILL.md').read_text(encoding='utf8')
+        for w in ('## 정답 검증', '빠르게', '보통', '꼼꼼하게', '출제 뒤 검증', 'guide.py 검증,가림,나눠풀기'): self.assertIn(w, md)
+
+    def blind(self, *a): return run(QW / 'scripts/blind.py', *a)
+
+    def test_blind_make_hides_answers(self):
+        ex = SKILL / 'assets/examples/example_basic.json'; hw = self.d / 'ex.hwpx'
+        code, o = run(BUILD, ex, hw); self.assertEqual(code, 0, o)
+        for src, out in ((ex, self.d / 'j'), (hw, self.d / 'h')):
+            code, o = self.blind('make', src, out); self.assertEqual(code, 0, o)
+            self.assertIn('문항 2개, 세트 1개', o); self.assertNotIn('③', o); self.assertNotIn('정답 ', o.split('\n')[0])  # 화면에 정답이 나오지 않는다
+            body = (out / '문항.md').read_text(encoding='utf8') + (out / '세트01.md').read_text(encoding='utf8')
+            for w in ('출제 포인트', '오답 분석', '정답 해설', '지문과 어긋난다', '[미주'): self.assertNotIn(w, body)
+            self.assertIn('렌즈는 빛을 사방으로 고르게 흩뜨려 보낸다.', body); self.assertIn('뱃고동', body)  # 선택지·〈보기〉는 남는다
+            key = json.loads((out / '정답표.json').read_text(encoding='utf8'))['문항']
+            self.assertEqual([(k['정답'], k['부정발문']) for k in key], [(3, True), (4, False)])
+        self.assertEqual(json.loads((self.d / 'h/정답표.json').read_text(encoding='utf8'))['문항'][0]['오답분석번호'], [1, 2, 4, 5])  # 한글 파일 미주에서 읽음
+
+    def test_blind_compare_flags(self):
+        ex = SKILL / 'assets/examples/example_basic.json'; out = self.d / 'w'
+        code, o = self.blind('make', ex, out, '--answers', '3,5'); self.assertEqual(code, 0, o)
+        def res(name, rows):
+            f = self.d / f'{name}.json'; f.write_text(json.dumps({'풀이자': name, '문항': rows}, ensure_ascii=False), encoding='utf-8'); return f
+        a = res('A', [{'번호': 1, '답': 3, '선지': ['참', '참', '거짓', '참', '참'], '확신': '높음'},
+                      {'번호': 2, '답': 4, '선지': ['거짓', '거짓', '거짓', '참', '참'], '확신': '중간'}])
+        b = res('B', [{'번호': 1, '답': 3, '선지': ['참', '참', '거짓', '거짓', '참'], '확신': '높음'},
+                      {'번호': 2, '답': 5, '선지': ['거짓', '거짓', '애매', '거짓', '참'], '확신': '낮음'}])
+        code, o = self.blind('compare', out, a); self.assertEqual(code, 0, o)
+        self.assertRegex(o, r'1번\s+③\s+A③\s+확인'); self.assertIn('복수 정답 소지(A: ④ ⑤)', o); self.assertIn('미주 ④와 교사 정답 ⑤이 다름', o)
+        code, o = self.blind('compare', out, a, b); self.assertEqual(code, 0, o)
+        self.assertIn('복수 정답 소지(B: ③ ④)', o); self.assertIn('정답 불일치', o); self.assertIn('풀이자끼리 갈림', o)
+        self.assertIn('애매·확신 낮음(B: ③ 애매)', o); self.assertIn('다시 볼 문항: 1번, 2번', o)
+        c = res('C', [{'번호': 1, '답': None, '선지': ['참', '참', '참', '참', '참']}])
+        code, o = self.blind('compare', out, c); self.assertIn('정답 없음 소지(C)', o); self.assertIn('2번  ④      C-', o.replace('  ', '  '))
+        for bad, msg in (({'풀이자': 'X', '문항': [{'번호': 9, '답': 1}]}, '정답표에 없는 번호'), ({'문항': [{'번호': 1, '답': 7}]}, '"답"은 1~5'),
+                         ({'문항': [{'번호': 1, '답': 1, '선지': ['참']}]}, '참·거짓·애매 5개'), ({'x': 1}, '"문항" 목록')):
+            f = self.d / 'bad.json'; f.write_text(json.dumps(bad, ensure_ascii=False), encoding='utf-8')
+            code, o = self.blind('compare', out, f); self.assertEqual(code, 1, o); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+        for args, msg in ((('make', ex, self.d / 'x', '--answers', '3'), '2개여야'), (('make', ex, self.d / 'x', '--answers', '3,9'), '1~5 숫자'),
+                          (('make', self.d / 'none.json', self.d / 'x'), '파일이 없습니다'), (('compare', self.d / 'nokey', a), '먼저 make')):
+            code, o = self.blind(*args); self.assertEqual(code, 1, o); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+        (self.d / 'tx.txt').write_text('제목만 있는 글\n', encoding='utf-8'); code, o = self.blind('make', self.d / 'tx.txt', self.d / 'x')
+        self.assertEqual(code, 1); self.assertIn('문항을 찾지 못했습니다', o)
+
+    def test_blind_reads_real_file_quirks(self):  # 실제 한글 시험지에서 본 꼴: 정답이 다음 줄 숫자, 번호 붙은 메모 문단, 선택지 4개
+        txt = """※ 다음 글을 읽고 물음에 답하시오.
+지문 첫 문단이다.
+[발문 1] 학습 메모: 영탄적 어조
+[발문 2] 윗글에 대한 설명으로 적절하지 <u>않은</u> 것은?
+[선택지] ① 가
+[선택지] ② 나
+[선택지] ③ 다
+[선택지] ④ 라
+[선택지] ⑤ 마
+[미주 1] [정답/모범답안]
+[미주 1] 5
+[발문 3] 윗글의 내용으로 가장 적절한 것은?
+[선택지] ① 가
+[선택지] ② 나
+[선택지] ③ 다
+[선택지] ④ 라
+[미주 2] 정답: 2
+"""
+        src = self.d / 'q.txt'; src.write_text(txt, encoding='utf-8'); out = self.d / 'q'
+        code, o = self.blind('make', src, out); self.assertEqual(code, 0, o)
+        self.assertIn('문항 2개', o); self.assertIn('선택지가 5개로 읽히지 않은 문항 1개: 2번', o)
+        key = json.loads((out / '정답표.json').read_text(encoding='utf8'))['문항']
+        self.assertEqual([(k['정답'], k['부정발문'], k['선택지수']) for k in key], [(5, True, 5), (2, False, 4)])
+        body = (out / '세트01.md').read_text(encoding='utf8'); self.assertIn('학습 메모: 영탄적 어조', body.split('### 1번')[0])  # 선택지 없는 번호 문단은 지문으로
+        self.assertIn('판정 보류', body); self.assertNotIn('모범답안', body)
+        f = self.d / 'r.json'; f.write_text(json.dumps({'문항': [{'번호': 2, '답': 2, '선지': ['거짓', '참', '거짓', '거짓']}]}, ensure_ascii=False), encoding='utf-8')
+        code, o = self.blind('compare', out, f); self.assertEqual(code, 0, o); self.assertRegex(o, r'2번\s+②\s+r②\s+판정 보류\(선택지 4개로 읽힘\)')
+
+    def test_blind_no_leak_from_answer_area_or_short_choices(self):  # QA: 정답과 해설 쪽 번호 문단, 선택지가 덜 읽힌 문항 뒤의 글이 묶음에 새지 않는다
+        ch = ''.join(f'[선택지] {c} 선지{c}\n' for c in '①②③④⑤')
+        txt = ('※ 다음 글을 읽고 물음에 답하시오.\n첫 지문이다.\n[발문 1] 윗글의 내용으로 적절하지 못한 것은?\n' + ''.join(f'[선택지] {c} 가\n' for c in '①②③④')
+               + '[미주 1] 정답 ①\n※ 다음 글을 읽고 물음에 답하시오.\n둘째 지문이다.\n[발문 2] 윗글의 내용으로 적절한 것은? (단, 정답이 없는 경우는 제외한다.)\n' + ch
+               + '정답과 해설\n[발문 3] 정답 ③ 지문의 둘째 문장이 근거이다.\n[미주 None] 정답 ③\n[표 5(2×3) 1,1] 정답은 ④번이다.\n')
+        src = self.d / 'l.txt'; src.write_text(txt, encoding='utf-8'); out = self.d / 'l'
+        code, o = self.blind('make', src, out); self.assertEqual(code, 0, o); self.assertIn('문항 2개, 세트 2개', o)
+        body = (out / '문항.md').read_text(encoding='utf8')
+        for w in ('근거이다', '④번이다', '정답 ③'): self.assertNotIn(w, body)
+        self.assertIn('둘째 지문이다', (out / '세트02.md').read_text(encoding='utf8'))  # 4지선다 뒤의 다음 세트가 〈보기〉로 빨려 들지 않는다
+        key = json.loads((out / '정답표.json').read_text(encoding='utf8'))['문항']
+        self.assertEqual([(k['세트'], k['부정발문'], k['정답']) for k in key], [(1, True, 1), (2, False, 3)])  # '못한'은 부정, 괄호 안 '없는'은 무시
+        (self.d / 'k.txt').write_text('※ 안내\n지문에 정답 ③ 지문의 근거가 그대로 있다.\n[발문 1] 적절한 것은?\n' + ch + '[미주 1] 정답 ③ 지문의 근거가 그대로 있다.\n', encoding='utf-8')
+        code, o = self.blind('make', self.d / 'k.txt', self.d / 'k'); self.assertEqual(code, 1, o); self.assertIn('해설 글이 문항 묶음에 섞였습니다', o)  # 마지막 안전장치
+
+    def test_blind_rejects_bad_input_without_traceback(self):  # QA: 잘못된 입력은 한국어 오류(종료 1), traceback 없음
+        q = {'type': 'question', 'stem': 's?', 'choices': ['a', 'b', 'c', 'd', 'e'], 'answer': 1}
+        for bad, msg in ((dict(q, answer=9), 'answer는 1~5'), (dict(q, answer=True), 'answer는'), (dict(q, choices=None), 'choices는'), (dict(q, stem=None), 'stem'),
+                         (dict(q, score='3.6'), 'score는 숫자'), (dict(q, note='x'), 'note는'), (dict(q, bogi='x'), 'bogi는'), ({'type': 'passage', 'paras': 'abc'}, 'paras는')):
+            f = self.d / 'b.json'; f.write_text(json.dumps({'items': [bad]}, ensure_ascii=False), encoding='utf-8')
+            code, o = self.blind('make', f, self.d / 'bo'); self.assertEqual(code, 1, (bad, o)); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+        (self.d / 'old.hwp').write_bytes(b'\xd0\xcf\x11\xe0'); (self.d / 'c.txt').write_bytes('가나다'.encode('cp949'))
+        for src, msg in ((self.d / 'old.hwp', '구형 .hwp'), (self.d / 'c.txt', 'UTF-8 글 파일이 아닙니다')):
+            code, o = self.blind('make', src, self.d / 'bo'); self.assertEqual(code, 1, o); self.assertIn(msg, o); self.assertNotIn('Traceback', o)
+        out = self.d / 'w'; code, o = self.blind('make', SKILL / 'assets/examples/example_basic.json', out); self.assertEqual(code, 0, o)
+        (out / '세트09.md').write_text('old', encoding='utf-8'); code, o = self.blind('make', SKILL / 'assets/examples/example_basic.json', out)
+        self.assertFalse((out / '세트09.md').exists())  # 지난번 묶음은 지운다
+        r = lambda rows: ((self.d / 's.json').write_text(json.dumps({'풀이자': 'A', '문항': rows}, ensure_ascii=False), encoding='utf-8'), self.d / 's.json')[1]
+        code, o = self.blind('compare', out, r([{'번호': 1, '답': 3, '선지': ['참', '참', '거짓', '참', '참']}, {'번호': 1, '답': 3}])); self.assertEqual(code, 1); self.assertIn('두 번', o)
+        code, o = self.blind('compare', out, r([{'번호': 2, '답': 1, '선지': ['거짓', '거짓', '거짓', '참', '거짓']}])); self.assertEqual(code, 0, o)
+        self.assertIn('답 ①와 선지 판정 ④이 다름', o)  # 답과 선지 판정이 어긋나면 알린다
+        (out / '정답표.json').write_text('{"문항": null}', encoding='utf-8'); code, o = self.blind('compare', out, self.d / 's.json')
+        self.assertEqual(code, 1); self.assertIn('손상', o); self.assertNotIn('Traceback', o)
+
+    def test_scripts_survive_cp949_console(self):  # QA: Windows 콘솔(cp949)로 출력해도 찍을 수 없는 글자 때문에 멈추지 않는다
+        import os; env = dict(os.environ, PYTHONIOENCODING='cp949'); ex = SKILL / 'assets/examples/example_basic.json'
+        for args in ((QW / 'scripts/guide.py', '검증'), (QW / 'scripts/check_items.py', ex), (QW / 'scripts/blind.py', 'make', ex, self.d / 'cp')):
+            r = subprocess.run([sys.executable, '-B', *map(str, args)], capture_output=True, env=env, cwd=tempfile.gettempdir())
+            self.assertEqual(r.returncode, 0, r.stderr.decode('cp949', 'replace')); self.assertNotIn(b'Traceback', r.stderr)
+
+    def test_blind_keeps_stanza_breaks(self):  # 한글 파일로 만든 가림 묶음에도 시의 연 구분 빈 줄이 남는다('연마다' 선지를 판정하려면 필요)
+        spec = {'format': 'basic', 'title': ['x'], 'items': [{'type': 'instruction', 'text': '다음 시를 읽고 물음에 답하시오.'},
+                {'type': 'passage', 'paras': ['첫 연 첫 행', '첫 연 둘째 행', '', '둘째 연 첫 행'], 'source': '출제자 창작'},
+                {'type': 'blank'}, self.__class__.q5()]}
+        src = self.d / 'p.json'; src.write_text(json.dumps(spec, ensure_ascii=False), encoding='utf-8'); hw = self.d / 'p.hwpx'
+        code, o = run(BUILD, src, hw); self.assertEqual(code, 0, o)
+        for inp in (src, hw):
+            out = self.d / inp.suffix[1:]; code, o = self.blind('make', inp, out); self.assertEqual(code, 0, o)
+            body = (out / '세트01.md').read_text(encoding='utf8'); self.assertIn('첫 연 둘째 행\n\n둘째 연 첫 행', body, inp.suffix)
+            self.assertNotIn('\n\n\n', body.split('### 1번')[0])
+        code, o = run(SKILL / 'scripts/extract_hwpx_text.py', hw); self.assertNotIn('\n\n', o.strip())  # 추출기 기본 출력은 그대로(빈 줄 없음)
+
+    @staticmethod
+    def q5():
+        return {'type': 'question', 'stem': '윗글의 표현상 특징으로 적절하지 않은 것은?', 'score': 3.0, 'answer': 1, 'choices': ['가.', '나.', '다.', '라.', '마.'],
+                'note': {'point': 'p', 'why': 'w', 'wrong': ['a', 'b', 'c', 'd']}}
 
     def test_kept_by_generator(self):
         out = self.d / 'keep'; (out / 'question-writing').mkdir(parents=True); (out / 'question-writing/SKILL.md').write_text('x', encoding='utf-8')
