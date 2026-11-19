@@ -3,20 +3,22 @@
 
 사용: python3 guide.py 영역[,영역…] [단계[,단계…]]
       python3 guide.py --list
-  영역: 공통 문학 독서 화법작문 문법 서술형 학교 분석 오답코드
+  영역: 공통 문학 독서 화법작문 문법 서술형 학교 분석 오답코드 / 정답 검증: 검증 가림 나눠풀기 풀이자
   단계: 설계 작성 해설 검수 (적지 않으면 모든 단계)
   출제 영역(문학·독서·화법작문·문법·서술형·학교)을 부르면 공통 지침이, 분석을 부르면 오답코드가 함께 나온다.
   --only  함께 나오는 공통·오답코드를 빼고 적은 영역만(이미 읽은 대화에서 다른 영역으로 넘어갈 때).
 지침 파일(references/*.md)의 각 `## 절` 바로 아래 `<!-- 단계: … -->` 표지로 절을 고른다. `전체`는 모든 단계에 나온다.
 표준 라이브러리만 쓴다."""
-import re, sys
+import re, sys, unicodedata
 from pathlib import Path
 
 REF = Path(__file__).resolve().parent.parent / 'references'
 AREAS = {'공통': 'common.md', '문학': 'literature.md', '독서': 'reading.md', '화법작문': 'speech-writing.md',
-         '문법': 'grammar.md', '서술형': 'written-answer.md', '학교': 'school.md', '분석': 'analysis.md', '오답코드': 'codes.md'}
+         '문법': 'grammar.md', '서술형': 'written-answer.md', '학교': 'school.md', '분석': 'analysis.md', '오답코드': 'codes.md',
+         '검증': 'verify.md', '가림': 'blind.md', '나눠풀기': 'split.md', '풀이자': 'solver.md'}
 ALIASES = {'화작': '화법작문', '화법': '화법작문', '작문': '화법작문', '매체': '화법작문', '언어': '문법', '언매': '문법',
-           '논술형': '서술형', '서답형': '서술형', '내신': '학교', '코드': '오답코드', '비문학': '독서'}
+           '논술형': '서술형', '서답형': '서술형', '내신': '학교', '코드': '오답코드', '비문학': '독서',
+           '정답검증': '검증', '블라인드': '가림', '나눠': '나눠풀기'}
 WITH = {**{a: '공통' for a in ('문학', '독서', '화법작문', '문법', '서술형', '학교')}, '분석': '오답코드'}
 STAGES = ('설계', '작성', '해설', '검수')
 TAG = re.compile(r'<!-- 단계: (.+?) -->')
@@ -47,7 +49,7 @@ def sections(area):
 
 def pick(args, only=False):
     areas, stages = [], []
-    for tok in (t for a in args for t in a.split(',') if t):
+    for tok in (t.strip() for a in args for t in unicodedata.normalize('NFC', a).split(',') if t.strip()):
         tok = ALIASES.get(tok, tok)
         if tok in AREAS: areas.append(tok)
         elif tok in STAGES: stages.append(tok)
@@ -63,6 +65,8 @@ def pick(args, only=False):
 
 
 def main(argv):
+    for s in (sys.stdout, sys.stderr):  # cp949 콘솔(Windows)에서도 멈추지 않게
+        if hasattr(s, 'reconfigure'): s.reconfigure(errors='replace')
     if not argv or argv[0] in ('-h', '--help'): print(__doc__); return
     if argv[0] == '--list':
         for a, f in AREAS.items():
@@ -73,7 +77,7 @@ def main(argv):
     for a in areas:
         head, secs = sections(a)
         chosen = [(t, b) for t, st, b in secs if '전체' in st or st & set(stages)]
-        print(f'\n########## {a} (references/{AREAS[a]}) — 단계: {", ".join(stages)}\n')
+        print(f'\n########## {a} (references/{AREAS[a]}) - 단계: {", ".join(stages)}\n')
         print(head + '\n')
         for t, b in chosen: print(f'{t}\n{b}\n')
         if not chosen: print('(이 영역에는 이 단계의 절이 따로 없다. 공통 지침의 같은 단계를 따른다.)\n')

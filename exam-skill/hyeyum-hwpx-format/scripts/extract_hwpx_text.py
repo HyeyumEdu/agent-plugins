@@ -15,7 +15,7 @@ def ttext(t):  # hp:t 의 글. <hp:nbSpace/> 같은 자식 요소 뒤의 글(tai
     return (t.text or '') + ''.join(({'nbSpace': ' ', 'fwSpace': ' ', 'tab': ' ', 'lineBreak': ' '}.get(ln(c), '')) + (c.tail or '') for c in t)
 
 
-def main(path):
+def main(path, keep_empty=False):  # keep_empty: 본문의 빈 문단도 빈 줄로 낸다(시의 연 구분을 살릴 때, blind.py 가 쓴다)
     try:
         z = zipfile.ZipFile(path)
         hd = ET.fromstring(z.read('Contents/header.xml')); secs = sorted((n for n in z.namelist() if re.fullmatch(r'Contents/section\d+\.xml', n)), key=lambda n: int(re.findall(r'\d+', n)[0]))
@@ -60,6 +60,7 @@ def main(path):
             elif re.match(r'\s*[①②③④⑤]', plain): mark = '[선택지]'
             else: mark = tag
             if t.strip(): print(f'{mark} {t.strip()}'.strip())
+            elif keep_empty and not tag: print('')
             for e in (x for r in p.findall(P + 'run') for c in r.findall(P + 'ctrl') for x in c.findall(P + 'endNote')):  # 이 문단 자신의 미주만(표 안 문단은 따로 돈다)
                 for ep in e.find(P + 'subList').findall(P + 'p'):
                     et = para_text(ep).strip()  # 한 번만 부른다(수식·그림 개수를 센다)
@@ -84,5 +85,7 @@ def main(path):
 
 
 if __name__ == '__main__':
+    for s in (sys.stdout, sys.stderr):  # cp949 콘솔(Windows)에서도 찍을 수 없는 글자 때문에 멈추지 않게
+        if hasattr(s, 'reconfigure'): s.reconfigure(errors='replace')
     if len(sys.argv) != 2 or sys.argv[1] in ('-h', '--help'): raise SystemExit(__doc__.split('\n')[1])
     main(sys.argv[1])
