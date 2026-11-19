@@ -5,17 +5,18 @@
 ## 쓰는 법
 - **시험지 만들기**: 지문·문항·정답·해설을 주고 "시험지 만들어 줘"라고 하거나 스킬 `exam-basic`을 부릅니다(Claude Code는 `/hyeyum-hwpx:exam-basic`). 에이전트가 내용을 정리해 스킬의 스크립트로 서식이 맞춰진 `.hwpx`를 만들고 규칙 검사까지 합니다.
 - **문항 출제**: "이 지문으로 문학 문제 5개 내 줘", "○○고 기말 대비 모의고사 짜 줘", "이 시험지 분석해 줘"처럼 말하거나 스킬 `question-writing`(Claude Code는 `/hyeyum-hwpx:question-writing`)을 부릅니다. 에이전트가 영역(문학·독서·화법·작문·문법·서술형)과 단계(설계·작성·해설·검수)에 맞는 출제 지침만 골라 읽고 발문·선택지·〈보기〉·해설을 짠 뒤, 선택지 길이와 정답 분포를 세어 검산합니다. 한글 파일은 이어서 `exam-basic`이 만듭니다.
+- **도구 준비 확인**: "한글 도구 쓸 수 있게 해 줘", "도구가 안 보여요"라고 하거나 스킬 `doctor`(Claude Code는 `/hyeyum-hwpx:doctor`)를 부릅니다. 에이전트가 편집 도구가 준비됐는지 먼저 진단하고, 빠진 것이 있으면 설치합니다. 선생님 컴퓨터에서 명령을 실행할 수 없는 곳(Claude 채팅)에서는 한 단계씩 설치 방법을 안내합니다.
 - **한글 문서 고치기**: 스킬 `hwpx`(Claude Code는 `/hyeyum-hwpx:hwpx`)를 부르거나 "이 한글 파일 고쳐 줘"라고 합니다. 문단 모양, 표, 미주·각주, 글 중간 수식·그림, 스타일, 쪽 설정을 편집 도구(MCP `hyeyum-hwpx-toolkit`)로 고치고, 시험지는 기본 서식에 맞춰 정리할 수도 있습니다. 고치기 직전 상태를 백업(.bak) 하나로 남겨 수정 전으로 되돌릴 수 있고, "백업 지워 줘"라고 하면 그 폴더의 백업 파일을 한 번에 지웁니다.
 
 ## 설치
-편집 도구는 [`uv`](https://docs.astral.sh/uv/)로 실행되므로 `uv`가 설치되어 있어야 합니다.
+편집 도구는 [`uv`](https://docs.astral.sh/uv/)로 실행되므로 선생님 컴퓨터(Windows·macOS)에 `uv`가 설치되어 있어야 합니다. 파이썬은 `uv`가 알아서 내려받습니다. Claude 데스크톱 앱의 Code 탭(유료 요금제)이나 Claude Code·Codex에서는 플러그인을 설치한 뒤 "한글 도구 쓸 수 있게 준비해 줘"라고 하면 `doctor` 스킬이 `uv` 설치까지 합니다.
 
 | 에이전트 | 설치 |
 |---|---|
 | Claude Code | `/plugin install hyeyum-hwpx --marketplace HyeyumEdu/agent-plugins` |
-| Claude 앱(Cowork) | Customize → Plugins에서 `HyeyumEdu/agent-plugins`를 마켓플레이스로 추가하고 `hyeyum-hwpx` 설치. 일반 채팅에서는 편집 도구가 돌지 않으니 `.mcpb` 확장을 따로 설치 |
+| Claude 앱 | Customize → Plugins → Add → Add marketplace에 `HyeyumEdu/agent-plugins`를 넣고 `hyeyum-hwpx` 추가(스킬은 채팅·Cowork·Code 탭에서 쓰임). 편집 도구는 Code 탭에서 켜지고, 채팅에서는 켜지지 않으니 채팅에서 쓰려면 [릴리스](https://github.com/HyeyumEdu/agent-plugins/releases/latest)의 `.mcpb` 확장을 데스크톱 앱에 따로 설치 |
 | Codex | `codex plugin marketplace add HyeyumEdu/agent-plugins` → `codex plugin add hyeyum-hwpx@hyeyum` |
-| 그 밖의 에이전트 | 스킬 폴더 `skills/exam-basic/`·`skills/question-writing/`·`skills/hwpx/`를 그 에이전트의 스킬 폴더에 복사하고, MCP 설정에 `uv run --frozen --directory <이 폴더>/server src/server.py <다룰 폴더>`를 stdio 서버로 등록 |
+| 그 밖의 에이전트 | 스킬 폴더 `skills/exam-basic/`·`skills/question-writing/`·`skills/hwpx/`·`skills/doctor/`를 그 에이전트의 스킬 폴더에 복사하고, MCP 설정에 `uv run --frozen --directory <이 폴더>/server src/server.py <다룰 폴더>`를 stdio 서버로 등록 |
 
 ## 데이터
 모든 처리는 사용자 컴퓨터(또는 에이전트의 코드 실행 환경)에서 이루어지고, 이 플러그인은 문서를 외부 서버로 보내지 않습니다. 편집 도구는 허용된 폴더(에이전트에 따라 작업 폴더, 문서·바탕화면·다운로드) 안의 파일만 열 수 있습니다. 첫 실행 때 `uv`가 PyPI에서 의존 패키지를 내려받습니다.
