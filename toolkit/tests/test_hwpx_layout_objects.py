@@ -8,7 +8,6 @@ from hwpx import HwpxDocument
 from hwpx.oxml.paragraph import HwpxOxmlParagraph
 from lxml import etree
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_layout  # noqa: E402
 
 HP = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"

@@ -10,10 +10,8 @@ from hwpx_automation.hwpx_ops import HwpxOps
 from hwpx_automation.runtime_services import RUNTIME_SERVICES
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_docops  # noqa: E402
 import hwpx_edit  # noqa: E402
-import hwpx_runs  # noqa: E402
 from hwpx_common import ToolInputError  # noqa: E402
 
 
@@ -22,7 +20,6 @@ def ws(tmp_path, monkeypatch):
     root = tmp_path / "ws"
     root.mkdir()
     monkeypatch.setenv(WORKSPACE_ROOTS_ENV, json.dumps([str(root)]))
-    hwpx_runs.patch_upstream()
     previous = RUNTIME_SERVICES.ops
     RUNTIME_SERVICES.replace_ops(HwpxOps(auto_backup=False))  # upstream's service graph fixes its workspace roots at import time
     doc = HwpxDocument.new()

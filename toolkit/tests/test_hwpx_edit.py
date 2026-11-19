@@ -11,7 +11,6 @@ import pytest
 from hwpx import HwpxDocument
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_edit  # noqa: E402
 import hwpx_layout  # noqa: E402
 
@@ -333,7 +332,6 @@ def test_table_row_heights_may_be_zero(tbl):
 
 def test_tool_input_errors_keep_their_message_upstream_errors_do_not():
     from hwpx_automation import runtime
-    hwpx_edit.patch_error_messages()
     assert runtime._classified_error_payload(hwpx_edit.ToolInputError("para_pr_id '30' is not defined"))["message"] == "para_pr_id '30' is not defined"
     assert "30" not in runtime._classified_error_payload(ValueError("secret 30"))["message"]
 

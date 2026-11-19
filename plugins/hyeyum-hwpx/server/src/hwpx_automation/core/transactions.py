@@ -47,7 +47,7 @@ def rotated_backup_path(path: Path, index: int) -> Path:
     return path.with_suffix(path.suffix + f".bak.{index}")
 
 
-def rotate_and_backup(path: Path, *, max_backups: int = 5) -> BackupReport:
+def rotate_and_backup(path: Path, *, max_backups: int = 0) -> BackupReport:  # hyeyum(수정): 백업은 <이름>.hwpx.bak 하나(.bak.N 회전 안 함)
     """Rotate existing ``.bak`` files and copy *path* to the current backup."""
 
     if not path.exists():
