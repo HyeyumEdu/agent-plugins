@@ -578,7 +578,7 @@ class T(unittest.TestCase):
     def test_plugin_generated_in_sync_and_self_contained(self):  # 플러그인 스킬은 원본에서 생성한 복사본이므로 원본과 어긋나면 안 된다
         plugin = SKILL.parent.parent / 'plugins/hyeyum-hwpx'; out = self.d / 'skills'
         code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
-        handwritten = {k: v for k, v in self.plugin_files(plugin / 'skills').items() if k.split('/')[0] not in ('hwpx', 'question-writing')}  # 직접 쓰는 스킬은 생성 대상이 아니다
+        handwritten = {k: v for k, v in self.plugin_files(plugin / 'skills').items() if k.split('/')[0] not in ('hwpx', 'question-writing', 'doctor')}  # 직접 쓰는 스킬은 생성 대상이 아니다
         self.assertEqual(self.plugin_files(out), handwritten, '원본을 고쳤으면 skill/build_plugin.py 를 다시 돌려 skills/ 를 갱신하세요')
         self.check_plugin_skills(out, {'exam-basic': ['basic']})
         self.assertNotIn('/hyeyum-hwpx:exam-format', (out / 'exam-basic/SKILL.md').read_text(encoding='utf8'))
@@ -601,6 +601,20 @@ class T(unittest.TestCase):
         out = self.d / 'keep'; (out / 'hwpx').mkdir(parents=True); (out / 'hwpx/SKILL.md').write_text('x', encoding='utf-8'); (out / 'basic').mkdir()
         code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
         self.assertEqual((out / 'hwpx/SKILL.md').read_text(encoding='utf8'), 'x'); self.assertEqual(sorted(p.name for p in out.iterdir()), ['exam-basic', 'hwpx'])
+
+    def test_handwritten_doctor_skill_kept_and_valid(self):  # 환경 진단 스킬 doctor 도 직접 쓰는 원본: 생성기가 지우지 않고, 진단 먼저·설치는 공식 명령만
+        sk = SKILL.parent.parent / 'plugins/hyeyum-hwpx/skills/doctor/SKILL.md'; md = sk.read_text(encoding='utf8')
+        head = re.match(r'---\n(.*?)\n---\n', md, re.S).group(1)
+        self.assertEqual([l.split(':')[0] for l in head.splitlines()], ['name', 'description']); self.assertIn('name: doctor\n', md)
+        self.assertLessEqual(len(re.search(r'description: (.*)', md).group(1)), 1024)
+        for w in ('list_available_documents', 'Linux', 'pip', '준비됐다'): self.assertIn(w, md)  # 진단·안전 규칙은 본문에 남긴다(참조 파일은 안 읽힐 수 있다)
+        refs = re.findall(r'`references/([\w-]+\.md)`', md); self.assertEqual(sorted(set(refs)), ['guide-teacher.md', 'install-direct.md', 'troubleshooting.md'])
+        allmd = md + ''.join((sk.parent / 'references' / r).read_text(encoding='utf8') for r in set(refs))  # 본문이 가리키는 파일이 모두 있어야 한다
+        for w in ('astral.sh/uv/install.ps1', 'astral.sh/uv/install.sh', 'releases/latest', 'Reconnect'): self.assertIn(w, allmd)
+        self.assertNotIn('astral.sh/uv/install', md)  # 설치 명령은 필요할 때만 읽히도록 참조 파일에 둔다
+        out = self.d / 'keep'; (out / 'doctor').mkdir(parents=True); (out / 'doctor/SKILL.md').write_text('x', encoding='utf-8')
+        code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)
+        self.assertEqual((out / 'doctor/SKILL.md').read_text(encoding='utf8'), 'x')
 
     def test_plugin_carries_components(self):  # 생성된 스킬이 부품 폴더·components.py·목록 문서를 스스로 갖는다
         out = self.d / 'comp'; code, msg = run(SKILL.parent / 'build_plugin.py', out); self.assertEqual(code, 0, msg)

@@ -9,7 +9,7 @@ python3 - "$ROOT" "$VER" <<'PY'
 import json, re, sys
 root, ver = sys.argv[1:]
 p = f"{root}/plugins/hyeyum-hwpx"
-found = {f: json.load(open(f"{p}/{f}"))["version"] for f in ["plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", "gemini-extension.json"]}
+found = {f: json.load(open(f"{p}/{f}"))["version"] for f in ["plugin.json", ".claude-plugin/plugin.json"]}
 found["server/pyproject.toml"] = re.search(r'^version = "(.*)"', open(f"{p}/server/pyproject.toml").read(), re.M)[1]
 bad = {f: v for f, v in found.items() if v != ver}
 sys.exit(f"버전 불일치(toolkit/manifest.json = {ver}): {bad}" if bad else 0)
