@@ -1,6 +1,6 @@
 # 혜윰학원 한글 플러그인
 
-국어 시험지를 한글 문서(HWPX)로 만들고, 이미 있는 한글 문서를 읽고 수정할 수 있어요. Claude, Codex, Cursor, Gemini CLI 등 Agent Skills와 MCP를 지원하는 에이전트에서 쓸 수 있어요.
+국어 시험지를 한글 문서(HWPX)로 만들고, 이미 있는 한글 문서를 읽고 수정할 수 있어요. Claude와 Codex 등 Agent Skills와 MCP를 지원하는 에이전트에서 쓸 수 있어요.
 
 ## 쓰는 법
 - **시험지 만들기**: 지문·문항·정답·해설을 주고 "시험지 만들어 줘"라고 하거나 스킬 `exam-basic`을 부릅니다(Claude Code는 `/hyeyum-hwpx:exam-basic`). 에이전트가 내용을 정리해 스킬의 스크립트로 서식이 맞춰진 `.hwpx`를 만들고 규칙 검사까지 합니다.
@@ -15,8 +15,6 @@
 | Claude Code | `/plugin install hyeyum-hwpx --marketplace HyeyumEdu/agent-plugins` |
 | Claude 앱(Cowork) | Customize → Plugins에서 `HyeyumEdu/agent-plugins`를 마켓플레이스로 추가하고 `hyeyum-hwpx` 설치. 일반 채팅에서는 편집 도구가 돌지 않으니 `.mcpb` 확장을 따로 설치 |
 | Codex | `codex plugin marketplace add HyeyumEdu/agent-plugins` → `codex plugin add hyeyum-hwpx@hyeyum` |
-| Cursor | 설정의 Plugins에 저장소 주소 `https://github.com/HyeyumEdu/agent-plugins`를 붙여 넣어 추가 |
-| Gemini CLI | 저장소를 받은 뒤 `gemini extensions install <저장소>/plugins/hyeyum-hwpx` |
 | 그 밖의 에이전트 | 스킬 폴더 `skills/exam-basic/`·`skills/question-writing/`·`skills/hwpx/`를 그 에이전트의 스킬 폴더에 복사하고, MCP 설정에 `uv run --frozen --directory <이 폴더>/server src/server.py <다룰 폴더>`를 stdio 서버로 등록 |
 
 ## 데이터
