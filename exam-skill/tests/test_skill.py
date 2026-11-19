@@ -608,6 +608,8 @@ class T(unittest.TestCase):
         self.assertEqual([l.split(':')[0] for l in head.splitlines()], ['name', 'description']); self.assertIn('name: doctor\n', md)
         self.assertLessEqual(len(re.search(r'description: (.*)', md).group(1)), 1024)
         for w in ('list_available_documents', 'Linux', 'pip', '준비됐다'): self.assertIn(w, md)  # 진단·안전 규칙은 본문에 남긴다(참조 파일은 안 읽힐 수 있다)
+        desc = re.search(r'description: (.*)', md).group(1); self.assertNotIn('안 열려요', desc); self.assertIn('hwpx', desc)  # 파일 문제는 hwpx 스킬로(설명이 겹치면 doctor가 불려 복구까지 했다)
+        self.assertIn('hwpx 스킬로 그 파일을 다룬다', md)
         refs = re.findall(r'`references/([\w-]+\.md)`', md); self.assertEqual(sorted(set(refs)), ['guide-teacher.md', 'install-direct.md', 'troubleshooting.md'])
         allmd = md + ''.join((sk.parent / 'references' / r).read_text(encoding='utf8') for r in set(refs))  # 본문이 가리키는 파일이 모두 있어야 한다
         for w in ('astral.sh/uv/install.ps1', 'astral.sh/uv/install.sh', 'releases/latest', 'Reconnect'): self.assertIn(w, allmd)

@@ -19,7 +19,8 @@ Claude 데스크톱 앱의 Code 탭, Claude Code, Codex처럼 선생님 컴퓨�
 이 명령이 막히면(보안 프로그램, 실행 정책) 다른 공식 방법을 쓴다: Windows `winget install --id=astral-sh.uv -e`, macOS `brew install uv`(Homebrew가 있을 때만).
 
 ## 3. 플러그인 설치 (도구가 목록에 없었을 때)
-- Claude 데스크톱 앱의 Code 탭·Claude Code: 플러그인 `hyeyum-hwpx`가 없으면 설치를 안내한다. 계정의 Customize → Plugins → Add → Add marketplace에 `HyeyumEdu/agent-plugins`를 넣고 `hyeyum-hwpx`를 추가하면 Claude Code에도 들어온다. 터미널이라면 `claude plugin install hyeyum-hwpx --marketplace HyeyumEdu/agent-plugins`.
+- Claude 데스크톱 앱의 Code 탭: 플러그인 `hyeyum-hwpx`가 없으면 설치를 안내한다. 먼저 claude.ai 또는 앱의 Customize → Plugins → Add → Add marketplace에 `HyeyumEdu/agent-plugins`를 넣고 `hyeyum-hwpx`를 추가한다(계정에 추가한 플러그인은 Claude Code에서도 쓰인다). 그다음 Code 탭 프롬프트 옆 **+** → **Add plugins**(또는 **Plugins** → **Browse plugins**)에서 `hyeyum-hwpx`가 설치·켜짐인지 확인한다.
+- Claude Code(터미널): `claude plugin install hyeyum-hwpx --marketplace HyeyumEdu/agent-plugins`.
 - Codex: `codex plugin marketplace add HyeyumEdu/agent-plugins`로 마켓플레이스를 더하고, 플러그인 화면(`/plugins`)에서 `hyeyum-hwpx`를 설치한다.
 
 ## 4. 다시 연결
