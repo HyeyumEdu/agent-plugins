@@ -8,6 +8,7 @@ from hwpx.errors import HwpxError
 from hwpx.oxml.namespaces import HP
 from hwpx.tools.id_integrity import check_id_integrity
 from hwpx_automation.core.document import open_doc
+from hwpx_automation.errors import ToolInputError  # noqa: F401  (업스트림 runtime이 이 종류의 문구를 그대로 내보낸다)
 from hwpx_automation.handlers._shared import (
     _revision_guard,
     _save_doc_verification,
@@ -18,26 +19,6 @@ from hwpx_automation.utils.helpers import resolve_path
 
 
 _HWPUNIT_PER_MM = 7200 / 25.4
-
-
-class ToolInputError(ValueError):
-    """A refusal whose message is safe to show the caller (argument names, ids, counts - never file paths)."""
-
-
-def patch_error_messages() -> None:
-    """Let a ToolInputError keep its message: upstream replaces every ValueError by one fixed INVALID_ARGUMENT sentence."""
-    from hwpx_automation import runtime
-    from hwpx_automation.errors import build_error_payload
-
-    original = runtime._classified_error_payload
-
-    def classified(exc: BaseException | None) -> dict[str, Any]:
-        for item in runtime._exception_chain(exc) if exc is not None else ():
-            if isinstance(item, ToolInputError):
-                return build_error_payload(code="INVALID_ARGUMENT", message=str(item))
-        return original(exc)
-
-    runtime._classified_error_payload = classified
 
 
 def _refuse_dangling_ids(doc: Any) -> None:

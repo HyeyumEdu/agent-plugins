@@ -15,7 +15,6 @@ from hwpx.equation.authoring import latex_to_eqedit
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 from lxml import etree
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_edit  # noqa: E402
 import hwpx_inline  # noqa: E402
 import hwpx_layout  # noqa: E402

@@ -237,54 +237,10 @@ def _slice_run(run_obj: HwpxOxmlRun, start: int, end: int) -> None:
 
 
 def _split_run(run_obj: HwpxOxmlRun, local_start: int, local_end: int, char_pr_id_ref: str) -> None:
-    text_value = run_obj.text or ""
-    length = len(text_value)
-    if length == 0:
-        return
+    # hyeyum(수정): 원래 구현은 탭을 빼고 세어 범위가 한 글자씩 밀리고 run을 통째로 복제해 탭·미주가 복제됐다.
+    from hwpx_runs import split_run
 
-    local_start = max(0, min(local_start, length))
-    local_end = max(0, min(local_end, length))
-    if local_start >= local_end:
-        return
-
-    if local_start == 0 and local_end == length:
-        run_obj.char_pr_id_ref = char_pr_id_ref
-        return
-
-    segments: list[tuple[int, int, str | None]] = []
-    original_char = run_obj.char_pr_id_ref
-    if local_start > 0:
-        segments.append((0, local_start, original_char))
-    segments.append((local_start, local_end, char_pr_id_ref))
-    if local_end < length:
-        segments.append((local_end, length, original_char))
-
-    parent = run_obj.paragraph.element
-    run_children = list(parent)
-    try:
-        index = run_children.index(run_obj.element)
-    except ValueError:
-        return
-
-    new_elements: list[ET.Element] = []
-    for seg_start, seg_end, char_id in segments:
-        if seg_start >= seg_end:
-            continue
-        element_copy = deepcopy(run_obj.element)
-        segment_run = HwpxOxmlRun(element_copy, run_obj.paragraph)
-        _slice_run(segment_run, seg_start, seg_end)
-        segment_run.char_pr_id_ref = char_id
-        new_elements.append(element_copy)
-
-    if not new_elements:
-        parent.remove(run_obj.element)
-        run_obj.paragraph.section.mark_dirty()
-        return
-
-    for offset, element in enumerate(new_elements):
-        parent.insert(index + offset, element)
-    parent.remove(run_obj.element)
-    run_obj.paragraph.section.mark_dirty()
+    split_run(run_obj, local_start, local_end, char_pr_id_ref)
 
 
 def _paragraph_length(paragraph: HwpxOxmlParagraph) -> int:

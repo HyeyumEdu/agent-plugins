@@ -10,7 +10,6 @@ import pytest
 from hwpx import HwpxDocument
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_page  # noqa: E402
 
 

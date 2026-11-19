@@ -16,7 +16,6 @@ from hwpx.tools.id_integrity import check_id_integrity
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 from lxml import etree
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_inline  # noqa: E402
 import hwpx_layout  # noqa: E402
 import hwpx_locate  # noqa: E402

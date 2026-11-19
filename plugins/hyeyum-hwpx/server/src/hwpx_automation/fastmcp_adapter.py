@@ -659,6 +659,8 @@ def snapshot_runtime_tools(mcp: Any) -> Mapping[str, FastMcpToolSnapshot]:
         meta = getattr(tool, "meta", None)
         if not isinstance(meta, Mapping):
             raise FastMcpAdapterError(f"registered tool {name!r} has no metadata mapping")
+        if meta.get("hwpxExtension") == "hyeyum-hwpx-toolkit":  # hyeyum(수정): 확장 도구는 업스트림 계약 점검 대상이 아니다
+            continue
         raw_parameters = getattr(tool, "parameters", None)
         if not isinstance(raw_parameters, Mapping):
             raise FastMcpAdapterError(

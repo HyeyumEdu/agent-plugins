@@ -24,7 +24,8 @@ jobs:
       - name: Server environment
         run: |
           uv venv --python 3.12 venv
-          VIRTUAL_ENV=$PWD/venv uv pip install -r plugins/hyeyum-hwpx/server/pyproject.toml plugins/hyeyum-hwpx/server/wheels/*.whl pytest
+          UV_PROJECT_ENVIRONMENT=$PWD/venv uv sync --frozen --directory plugins/hyeyum-hwpx/server  # 배포와 같은 잠금 파일(uv.lock) 버전으로 시험
+          VIRTUAL_ENV=$PWD/venv uv pip install pytest
       - name: Server tests
         run: PYTHONDONTWRITEBYTECODE=1 venv/bin/python -m pytest toolkit/tests -q -p no:cacheprovider
 

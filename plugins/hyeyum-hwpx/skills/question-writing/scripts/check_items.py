@@ -5,9 +5,9 @@
   --school  내신 대비: 수능형 기준(긍정 발문 비율, '라는 점에서', 선지 길이)은 '참고'로만 낸다(학교 기준을 따른다).
   --area    선지 길이 기준의 영역(기본 문학). 독서는 기출 중앙값을 참고로, 기타(화법·작문·문법·섞인 시험지)는 길이 판정 없이 값만 낸다.
 판정은 안내용이라 종료 코드는 입력 오류일 때만 1이다. 표준 라이브러리만 쓴다."""
-import json, re, statistics, sys
+import json, re, statistics, sys, unicodedata
 
-NEG = re.compile(r'않은|않는|아닌|없는|틀린')
+NEG = re.compile(r'않은|않는|아닌|없는|틀린|못한|잘못|어긋나는|거리가 먼|다른 하나|다른 것')  # blind.py 와 같은 정의
 LENGTH = {'문학': ((58, 81), (32, 47)), '독서': ((53, 53), (33, 33)), '기타': None}  # (〈보기〉 문항, 그 외) 중앙값 기준. 독서는 기출 중앙값 한 점
 
 
@@ -25,9 +25,9 @@ def load(path):
         if not isinstance(it, dict) or it.get('type') != 'question': continue
         n = len(qs) + 1; ch = it.get('choices'); a = it.get('answer')
         if not (isinstance(ch, list) and len(ch) == 5 and all(isinstance(c, str) for c in ch)): fail(f'{n}번 문항(items {i}번째): choices는 글 5개여야 합니다')
-        if not (isinstance(a, int) and 1 <= a <= 5): fail(f'{n}번 문항(items {i}번째): answer는 1~5 숫자여야 합니다')
+        if not (isinstance(a, int) and not isinstance(a, bool) and 1 <= a <= 5): fail(f'{n}번 문항(items {i}번째): answer는 1~5 숫자여야 합니다')
         if not isinstance(it.get('stem'), str): fail(f'{n}번 문항(items {i}번째): stem(발문)이 없습니다')
-        qs.append(dict(stem=it['stem'], choices=ch, answer=a, bogi='bogi' in it or '〈보기〉' in it['stem']))
+        qs.append(dict(stem=it['stem'], choices=ch, answer=a, bogi=bool(it.get('bogi')) or '〈보기〉' in it['stem']))
     if not qs: fail('객관식 문항(type "question")이 없습니다')
     return qs
 
@@ -58,7 +58,7 @@ def report(qs, school=False, area='문학'):
     choices = [c for q in qs for c in q['choices']]
     commas = sum(c.count(',') for c in choices) / len(choices)
     jeom = sum(c.count('라는 점에서') for c in choices)
-    pos = sum(not NEG.search(q['stem']) for q in qs) / n
+    pos = sum(not NEG.search(re.sub(r'\([^)]*\)', '', unicodedata.normalize('NFC', q['stem']))) for q in qs) / n  # 괄호 안 단서는 보지 않는다
     lines.append(f'문항 {n}개' + (' (10개 미만이라 비율 판정은 참고만)' if few else '') + (' · 내신 기준(--school)' if school else ' · 수능형 기준'))
     over = ['①②③④⑤'[k] for k, c in enumerate(dist) if n >= 5 and c / n > 0.4]  # 5문항 미만은 쏠림을 따지지 않는다
     rr = runs(ans)
@@ -77,7 +77,7 @@ def report(qs, school=False, area='문학'):
         if not rng: lines.append(f'선지 길이 중앙값({name}): {med:g}자 → 참고(영역 기준 없음)')
         elif rng[0] == rng[1]: lines.append(f'선지 길이 중앙값({name}): {med:g}자 {area} 기출 중앙값 {rng[0]}자 → 참고')
         else: lines.append(f'선지 길이 중앙값({name}): {med:g}자 {area} 기준 {rng[0]}~{rng[1]}자 → {judge(med, *rng, school)}')
-    lines.append('문항별: 번호 정답 정답길이순위(1=가장 김) 최장−최단')
+    lines.append('문항별: 번호 정답 정답길이순위(1=가장 김) 최장-최단')
     for k, a, rank, gap, short in rows:
         note = []
         if rank == 1: note.append('정답이 가장 김')
@@ -88,6 +88,8 @@ def report(qs, school=False, area='문학'):
 
 
 def main(argv):
+    for s in (sys.stdout, sys.stderr):  # cp949 콘솔(Windows)에서도 멈추지 않게
+        if hasattr(s, 'reconfigure'): s.reconfigure(errors='replace')
     area = '문학'
     if '--area' in argv:
         i = argv.index('--area'); area = argv[i + 1] if i + 1 < len(argv) else ''

@@ -19,6 +19,8 @@ from . import __version__
 from . import quality as quality_contract
 from .configuration import env_value
 from .errors import (
+    DocumentDamagedError,  # hyeyum(수정)
+    ToolInputError,  # hyeyum(수정)
     HwpDocumentError,
     build_error_payload,
     hwp5_error_payload,
@@ -105,6 +107,14 @@ def _document_error_payload(item: BaseException) -> dict[str, Any] | None:
 
 def _classified_error_payload(exc: BaseException | None) -> dict[str, Any]:
     if exc is not None:
+        for item in _exception_chain(exc):  # hyeyum(수정): 우리 도구의 거절 문구는 고정 문장으로 바꾸지 않는다
+            if isinstance(item, ToolInputError):
+                return build_error_payload(code="INVALID_ARGUMENT", message=str(item))
+            if isinstance(item, DocumentDamagedError):  # hyeyum(수정): "찾을 수 없음"이나 이유 없는 실패 대신 손상이라고 알린다
+                return build_error_payload(
+                    code="DOCUMENT_DAMAGED",
+                    message="파일이 손상됐거나 HWPX 형식이 아니라서 열 수 없습니다. 한글에서 열리면 HWPX(.hwpx)로 다시 저장한 파일을 쓰세요.",
+                )
         for item in _exception_chain(exc):
             document_payload = _document_error_payload(item)
             if document_payload is not None:
