@@ -15,7 +15,7 @@
 |---|---|
 | Claude Code | `/plugin install hyeyum-hwpx --marketplace HyeyumEdu/agent-plugins` |
 | Claude 앱 | Customize → Plugins → Add → Add marketplace에 `HyeyumEdu/agent-plugins`를 넣고 `hyeyum-hwpx` 추가(스킬은 채팅·Cowork·Code 탭에서 쓰임). 편집 도구는 Code 탭에서 켜지고, 채팅에서는 켜지지 않으니 채팅에서 쓰려면 [릴리스](https://github.com/HyeyumEdu/agent-plugins/releases/latest)의 `.mcpb` 확장을 데스크톱 앱에 따로 설치 |
-| Codex | `codex plugin marketplace add HyeyumEdu/agent-plugins` → `codex plugin add hyeyum-hwpx@hyeyum` |
+| Codex | `codex plugin marketplace add HyeyumEdu/agent-plugins`로 마켓플레이스를 더하고, Codex CLI에서 `/plugins`(앱은 Plugins 화면)를 열어 `hyeyum-hwpx` 설치 후 새 세션 |
 | 그 밖의 에이전트 | 스킬 폴더 `skills/exam-basic/`·`skills/question-writing/`·`skills/hwpx/`·`skills/doctor/`를 그 에이전트의 스킬 폴더에 복사하고, MCP 설정에 `uv run --frozen --directory <이 폴더>/server src/server.py <다룰 폴더>`를 stdio 서버로 등록 |
 
 ## 데이터

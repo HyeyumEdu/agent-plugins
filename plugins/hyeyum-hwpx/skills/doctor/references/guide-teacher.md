@@ -11,7 +11,8 @@ Claude 채팅(웹·데스크톱 앱의 Chat 탭)과 클라우드에서 도는 �
 1. Claude 데스크톱 앱을 설치하고 로그인한다(claude.ai/download).
 2. 사이드바 위쪽의 Code 탭을 연다. 프롬프트 아래 환경 선택에서 Local을 고르고, 폴더는 문서 폴더처럼 한글 파일이 있는 곳을 고른다.
 3. Customize → Plugins → Add → Add marketplace에 `HyeyumEdu/agent-plugins`를 넣고 `hyeyum-hwpx`를 추가한다.
-4. Code 탭에서 "한글 도구 쓸 수 있게 준비해 줘"라고 말한다.
+4. Code 탭 프롬프트 옆 **+** → **Add plugins**(또는 **Plugins** → **Browse plugins**)에서 `hyeyum-hwpx`가 켜져 있는지 본다.
+5. Code 탭에서 "한글 도구 쓸 수 있게 준비해 줘"라고 말한다.
 
 ## 나. Claude 채팅에서 확장(.mcpb)으로 쓰기 (데스크톱 앱 필요, 웹에서는 안 됨)
 1. `uv` 설치: Windows는 시작 메뉴에서 "PowerShell"을 열고, Mac은 "터미널"을 열어 아래 한 줄을 붙여 넣고 Enter를 누른다.
