@@ -2,18 +2,30 @@
 name = "hyeyum-hwpx-toolkit-mcp"
 version = "1.4.1"
 description = "HWPX 시험지 작성·수정 MCP (python-hwpx 개선판 포함)"
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # 3.10은 2026-10 지원 종료, Windows ARM용 wheel도 없다
 # 업스트림 서버 python-hwpx-automation 7.3.4는 src/hwpx_automation/에 소스로 들어 있다(PyPI에서 받지 않음).
-# 아래는 그 패키지가 요구하던 의존성(+[mcp])이다.
+# 아래는 그 패키지가 요구하던 의존성(+[mcp])이다. 버전은 고정하지 않고 릴리스마다 `uv lock --upgrade`로 최신을 잠근다.
+# 예외: mcp는 업스트림이 실행 중에 1.28.1인지 검사하므로(hwpx_automation/fastmcp_adapter.py) 고정한다.
 dependencies = [
   "python-hwpx",
   "pydantic>=2.11,<3",
   "cryptography>=42.0",
   "anyio>=4.0",
-  "tomli>=2.0; python_version < '3.11'",
   "mcp==1.28.1",
 ]
 
 # 개선한 python-hwpx(포크)를 번들한 wheel로 설치한다. 사용자 PC에 git이 없어도 된다.
 [tool.uv.sources]
 python-hwpx = { path = "wheels/python_hwpx-6.8.0-py3-none-any.whl" }
+
+# 선생님 PC 4종(Mac Apple Silicon·Intel, Windows x64·ARM)에 설치 파일(wheel)이 있는 버전만 잠근다.
+# cryptography는 최신판에 Intel Mac·Windows ARM wheel이 없어 소스 빌드(Rust 필요)로 넘어가므로 빌드를 막고,
+# uv가 그 PC에서만 wheel이 있는 버전으로 내려가게 한다(나머지 PC는 최신 그대로).
+[tool.uv]
+required-environments = [
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "sys_platform == 'win32' and platform_machine == 'ARM64'",
+]
+no-build-package = ["cryptography"]
