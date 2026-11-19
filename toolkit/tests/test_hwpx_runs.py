@@ -10,7 +10,6 @@ import pytest
 from hwpx import HwpxDocument
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 import hwpx_edit  # noqa: E402
 import hwpx_runs  # noqa: E402
 
@@ -58,7 +57,6 @@ def test_endnote_is_not_duplicated_and_stays_after_its_text(ws, span):
 def test_upstream_format_text_gets_the_same_repair(ws):
     from hwpx_automation.core.document import open_doc
     from hwpx_automation.core.formatting import format_text_range
-    hwpx_runs.patch_upstream()
     doc = open_doc(str(ws / "doc.hwpx"))
     format_text_range(doc, 1, 0, 4, bold=True)
     format_text_range(doc, 2, 3, 6, italic=True)

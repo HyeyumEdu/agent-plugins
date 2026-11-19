@@ -19,6 +19,7 @@ from . import __version__
 from . import quality as quality_contract
 from .configuration import env_value
 from .errors import (
+    ToolInputError,  # hyeyum(수정)
     HwpDocumentError,
     build_error_payload,
     hwp5_error_payload,
@@ -105,6 +106,9 @@ def _document_error_payload(item: BaseException) -> dict[str, Any] | None:
 
 def _classified_error_payload(exc: BaseException | None) -> dict[str, Any]:
     if exc is not None:
+        for item in _exception_chain(exc):  # hyeyum(수정): 우리 도구의 거절 문구는 고정 문장으로 바꾸지 않는다
+            if isinstance(item, ToolInputError):
+                return build_error_payload(code="INVALID_ARGUMENT", message=str(item))
         for item in _exception_chain(exc):
             document_payload = _document_error_payload(item)
             if document_payload is not None:

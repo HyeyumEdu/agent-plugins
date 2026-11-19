@@ -7,14 +7,11 @@ import os
 import sys
 from typing import Any, Literal
 
-from hwpx_automation import fastmcp_adapter as _fa
 from hwpx_automation import server as upstream
-from hwpx_automation.handlers import quality_render as _qr  # 이 모듈도 snapshot_runtime_tools를 import 시점에 묶어 두므로 함께 보정한다
 from hwpx_automation.workspace import WorkspaceResolver  # 업스트림 도구와 같은 경로 검사
 
 import hwpx_layout
 import hwpx_lazy
-import hwpx_runs
 from hwpx_page import add_page_control_ext, set_page_options_ext
 from hwpx_styles import apply_style_ext, define_style_ext, set_list_format_ext
 from hwpx_docops import copy_paragraphs_ext, delete_backups_ext, insert_document_ext
@@ -23,7 +20,7 @@ from hwpx_objects import delete_inline_object_ext, update_inline_object_ext
 from hwpx_parts import remove_header_footer_ext, sanitize_document_ext
 from hwpx_tables import edit_table_structure_ext, merge_table_with_next_ext, split_table_ext
 from hwpx_textedit import edit_paragraph_text_ext, merge_paragraphs_ext, redact_text_ext, replace_text_ext, split_paragraph_ext
-from hwpx_common import ToolInputError, patch_error_messages
+from hwpx_common import ToolInputError
 from hwpx_edit import add_endnote_ext, add_paragraphs_ext, format_table_ext, format_text_ext, set_columns_ext, set_paragraph_format_ext, set_tab_attributes
 
 TOOLS: dict[str, Any] = {}
@@ -53,8 +50,6 @@ def hwpx_read_layout(filename: str, part: Literal["overview", "body", "tables", 
 
 
 def install(roots: list[str] | None = None) -> None:
-    hwpx_runs.patch_upstream()
-    patch_error_messages()
     writes = (set_paragraph_format_ext, format_text_ext, set_tab_attributes, add_endnote_ext, format_table_ext, set_columns_ext, add_paragraphs_ext,
               apply_style_ext, define_style_ext, set_list_format_ext, set_page_options_ext, add_page_control_ext,
               copy_paragraphs_ext, insert_document_ext, insert_inline_ext, delete_backups_ext,
@@ -64,11 +59,7 @@ def install(roots: list[str] | None = None) -> None:
     for fn in (hwpx_read_layout, *writes):
         hwpx_lazy.register(upstream.mcp, TOOLS, fn, fn.__doc__, fn in writes)
 
-    # 업스트림 점검(mcp_server_health·describe_capabilities)은 모르는 도구가 있으면 "skewed"/쓰기 차단으로 보고해 에이전트가 오해한다.
-    # 점검용 목록에서만 우리 도구를 뺀다(실제 쓰기 게이트는 영향 없음).
-    orig = _fa.snapshot_runtime_tools
-    hidden = lambda mcp: {k: v for k, v in orig(mcp).items() if k not in TOOLS}
-    _fa.snapshot_runtime_tools = _qr.snapshot_runtime_tools = hidden
+    # 업스트림 점검(mcp_server_health·describe_capabilities)은 hwpxExtension 표시가 있는 우리 도구를 빼고 본다(업스트림 사본 fastmcp_adapter.py).
 
     # 코어+메타 도구만 tools/list에 올리고 나머지는 검색해서 쓴다(HWPX_SHOW_ALL_TOOLS=1이면 전부 노출).
     upstream.mcp._mcp_server.instructions = routing_text(roots or [])

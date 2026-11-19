@@ -181,6 +181,10 @@ def build_error_payload(
     ).model_dump(exclude_none=True, by_alias=True)
 
 
+class ToolInputError(ValueError):  # hyeyum(수정): 호출자에게 그대로 보여도 되는 거절(인수 이름·id·개수, 파일 경로 없음)
+    """A refusal whose message is safe to show the caller (argument names, ids, counts - never file paths)."""
+
+
 class HwpDocumentError(RuntimeError):
     """An ``.hwp`` request the installed engine cannot carry out."""
 

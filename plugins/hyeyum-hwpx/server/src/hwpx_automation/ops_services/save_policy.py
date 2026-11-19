@@ -319,6 +319,7 @@ class SavePolicy:
     ) -> _ExactBackupResult:
         """Rotate local sidecars from no-follow guards and an exact preimage."""
 
+        max_backups = 0  # hyeyum(수정): 호출처(hwpx_ops)가 5를 넘겨도 백업은 하나만 둔다
         if not isinstance(self._context.storage, LocalDocumentStorage):
             return _ExactBackupResult(
                 rotate_and_backup(target, max_backups=max_backups)

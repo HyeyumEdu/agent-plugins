@@ -8,9 +8,9 @@ from hwpx_inline import (  # noqa: F401  (insert_inline_ext: tests call it as hw
     build_items, build_table, check_items, check_table, insert_inline_ext, paragraph_style, table_at, table_indexes,
 )
 from hwpx_runs import split_run
-from hwpx_common import (  # noqa: F401  (patch_error_messages: tests call it as hwpx_edit.patch_error_messages)
+from hwpx_common import (
     _PARA_KEYS, ToolInputError, _body_paragraph, _check_keys, _check_paragraph_indexes, _commit, _holds_section_definition,
-    _para_kwargs, _refuse_dangling_ids, _renumber_endnotes, _renumber_footnotes, _run_kwargs, patch_error_messages,
+    _para_kwargs, _refuse_dangling_ids, _renumber_endnotes, _renumber_footnotes, _run_kwargs,
 )
 
 #: keys of a paragraph spec (add_paragraphs_ext, add_endnote_ext, format_table_ext cells)

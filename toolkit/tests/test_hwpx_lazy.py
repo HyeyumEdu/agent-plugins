@@ -9,7 +9,6 @@ from hwpx import HwpxDocument
 from hwpx_automation.workspace import WORKSPACE_ROOTS_ENV
 from mcp import types
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins" / "hyeyum-hwpx" / "server" / "src"))
 
 
 @pytest.fixture(scope="module")
