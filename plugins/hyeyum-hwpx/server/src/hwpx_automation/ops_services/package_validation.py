@@ -16,6 +16,7 @@ from ..upstream import (
     validate_document_path,
 )
 
+from ..errors import DocumentDamagedError  # hyeyum(수정)
 from .context import DocumentContext
 
 logger = logging.getLogger("hwpx_automation.hwpx_ops")
@@ -63,23 +64,28 @@ class PackageValidationService:
 
         source_path = self._context._resolve_path(source)
         output_path = self._context.storage.resolve_output_path(output)
-        if recover:
-            result = repair_from_recovered(
-                source_path,
-                output_path,
-                overwrite=overwrite,
-                max_entry_size=max_entry_size,
-                max_total_size=max_total_size,
-                max_source_size=max_source_size,
-            )
-        else:
-            result = repair_repack(
-                source_path,
-                output_path,
-                overwrite=overwrite,
-                max_entry_size=max_entry_size,
-                max_total_size=max_total_size,
-            )
+        try:  # hyeyum(수정): 파일은 있는데 ZIP 안 항목이 없으면 라이브러리가 FileNotFoundError를 내므로 손상으로 알린다
+            if recover:
+                result = repair_from_recovered(
+                    source_path,
+                    output_path,
+                    overwrite=overwrite,
+                    max_entry_size=max_entry_size,
+                    max_total_size=max_total_size,
+                    max_source_size=max_source_size,
+                )
+            else:
+                result = repair_repack(
+                    source_path,
+                    output_path,
+                    overwrite=overwrite,
+                    max_entry_size=max_entry_size,
+                    max_total_size=max_total_size,
+                )
+        except FileNotFoundError as exc:
+            if source_path.is_file():
+                raise DocumentDamagedError(f"cannot repair: {exc}") from exc
+            raise
         validation = validate_package(output_path)
         open_safety = validate_editor_open_safety(output_path)
         return {

@@ -32,7 +32,7 @@ else:
     _OPEN_SAFETY_CLASSIFIER_IMPORT_ERROR = None
 
 from . import quality as quality_contract
-from .errors import HwpDocumentError
+from .errors import DocumentDamagedError, HwpDocumentError  # hyeyum(수정): DocumentDamagedError
 from .upstream import (
     HwpxDocument,
     hwp5_conversion_report,
@@ -339,7 +339,10 @@ def open_local_document(path: Path, *, role: str) -> HwpxDocument:
     if is_hwp5_source(path):
         require_native_hwp5()
         return open_document(path)
-    require_hwpx_editor_open_safe(path, role=role)
+    try:
+        require_hwpx_editor_open_safe(path, role=role)
+    except RuntimeError as exc:  # hyeyum(수정): 입력 파일이 열기 점검에 걸리면 손상으로 알린다
+        raise DocumentDamagedError(str(exc)) from exc
     return open_document(path)
 
 
