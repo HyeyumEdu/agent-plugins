@@ -1,6 +1,6 @@
 [project]
 name = "hyeyum-hwpx-toolkit-mcp"
-version = "1.5.0"
+version = "1.5.1"
 description = "HWPX 시험지 작성·수정 MCP (python-hwpx 개선판 포함)"
 requires-python = ">=3.11"  # 3.10은 2026-10 지원 종료, Windows ARM용 wheel도 없다
 # 업스트림 서버 python-hwpx-automation 7.3.4는 src/hwpx_automation/에 소스로 들어 있다(PyPI에서 받지 않음).
