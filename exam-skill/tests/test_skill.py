@@ -309,7 +309,7 @@ class T(unittest.TestCase):
         s = self.spec(); q = [i for i in s['items'] if i['type'] == 'question'][1]
         q['bogi'] = {'lines': ['가' * 94]}; _, _, p = self.build(s)
         hs = re.findall(r'<hp:tbl id="\d+"[^>]*>\s*<hp:sz width="20038" widthRelTo="ABSOLUTE" height="(\d+)"', self.sec(p))
-        self.assertEqual(int(hs[0]), (1 + 5) * 1600 + 2 * 250 + 800)  # 보기 줄간격 160%
+        self.assertEqual(int(hs[0]), (1 + 5) * 1500 + 2 * 250 + 800)  # 보기 줄간격 150%
 
     def test_column_break_allowed_with_warning(self):
         s = self.spec(); s['items'] = [i for i in s['items'] if i['type'] not in ('column_break', 'page_break')]  # 나눔을 모두 빼고 하나만 다시 넣는다
@@ -687,6 +687,8 @@ class T(unittest.TestCase):
         _, out, p = self.build(s, 'kcC.hwpx'); x = self.sec(p); code, v = self.verify(p); self.assertEqual(code, 0, v); self.assertIn('G40  PASS', v); self.assertIn('G41  PASS', v)
         self.assertEqual(x.count('columnBreak="1"'), 2)  # 사용자 column_break 1개 + 둘째 안내문 자동 1개
         m = self.mutate(p, lambda t: re.sub(r'(<hh:breakSetting [^>]*keepLines=")1(")', r'\g<1>0\2', t), 'kcm.hwpx', hfn=lambda h: h.replace('keepLines="1"', 'keepLines="0"')); self.assertIn('G40  FAIL', self.verify(m)[1])
+        self.assertIn('G40  FAIL', self.verify(self.mutate(p, lambda t: t, 'kc1.hwpx', hfn=lambda h: h.replace('keepWithNext="0"', 'keepWithNext="1"')))[1])  # 선택지를 다시 묶으면 FAIL(줄 단위로 흘러야 함)
+        self.assertIn('G40  FAIL', self.verify(self.mutate(p, lambda t: t, 'kc0.hwpx', hfn=lambda h: h.replace('keepWithNext="1"', 'keepWithNext="0"')))[1])  # 발문이 〈보기〉와 떨어질 수 있으면 FAIL
         s = self.spec(); s['group_start'] = 'flow'; s['items'] += [{'type': 'instruction', 'text': '※ 다음 글을 읽고 물음에 답하시오.'}, {'type': 'passage', 'paras': ['둘째 지문이다.']}, self.q()]
         _, _, p = self.build(s, 'flow.hwpx'); self.assertEqual(self.sec(p).count('columnBreak="1"'), 1); self.assertIn('G41  WARN', self.verify(p)[1])   # 나눔 없는 묶음은 경고
         s['group_start'] = 'page'; _, _, p = self.build(s, 'page.hwpx'); self.assertGreaterEqual(self.sec(p).count('pageBreak="1"'), 2)
@@ -974,19 +976,19 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
 
     # ---- basic 부품 폴더(템플릿 번호, 템플릿에 없는 모양은 덧붙인 번호가 곧 계약: 빌더·검사기가 역할 이름으로 이 번호를 받는다) ----
     BASIC = {'title': {'line': (61, 53)}, 'blank': {'line': (0, 0)}, 'gap-3pt': {'line': (0, 31)}, 'instruction': {'line': (0, 10)},
-             'passage-border': {'body': (32, 0), 'bold': (None, 10), 'underline': (None, 32), 'label': (None, 3), 'summary': (None, 3), 'source': (43, 3)},
-             'stem': {'stem': (90, 37), 'negation': (None, 38), 'marker': (None, 58)},
-             'bogi-box': {'outer': (92, 0), 'label': (93, 41), 'line_poem': (95, 0), 'line_prose': (94, 0), 'bold': (None, 10), 'underline': (None, 32), 'source': (91, 3)},
-             'choice5': {'choice': (96, 0)}, 'answer-note': {'first': (0, 0), 'answer': (None, 39), 'row': (47, 0), 'head': (None, 40), 'wrong_title': (48, None), 'wrong': (49, 0)},
+             'passage-border': {'body': (90, 0), 'bold': (None, 10), 'underline': (None, 32), 'label': (None, 3), 'summary': (None, 3), 'source': (91, 3)},
+             'stem': {'stem': (92, 37), 'negation': (None, 38), 'marker': (None, 58)},
+             'bogi-box': {'outer': (94, 0), 'label': (95, 41), 'line_poem': (97, 0), 'line_prose': (96, 0), 'bold': (None, 10), 'underline': (None, 32), 'source': (93, 3)},
+             'choice5': {'choice': (98, 0)}, 'answer-note': {'first': (0, 0), 'answer': (None, 39), 'row': (47, 0), 'head': (None, 40), 'wrong_title': (48, None), 'wrong': (49, 0)},
              'end-heading': {'heading': (0, 12)}}
 
     def basic_fmt(self): return json.loads((SKILL / 'assets/formats.json').read_text(encoding='utf-8'))[0]
 
     def test_basic_components_resolve_on_template(self):
         reg = self.C.Registry(SKILL, self.basic_fmt()); h = reg.resolve(self.HDR)
-        # 템플릿(골든 헤더)은 그대로 두고, 템플릿에 없는 줄간격 160% 문단 7개(발문·보기 5·선택지)와 흰색 1pt 미주 표시 글자 1개만 끝에 덧붙는다
+        # 템플릿(골든 헤더)은 그대로 두고, 템플릿에 없는 줄간격 150% 문단 9개(지문 2·발문·보기 5·선택지)와 흰색 1pt 미주 표시 글자 1개만 끝에 덧붙는다
         cnt = lambda x, t: int(re.search(rf'<hh:{t} itemCnt="(\d+)"', x).group(1))
-        self.assertEqual((cnt(h, 'paraProperties') - cnt(self.HDR, 'paraProperties'), cnt(h, 'charProperties') - cnt(self.HDR, 'charProperties')), (7, 1))
+        self.assertEqual((cnt(h, 'paraProperties') - cnt(self.HDR, 'paraProperties'), cnt(h, 'charProperties') - cnt(self.HDR, 'charProperties')), (9, 1))
         for t in ('paraPr', 'charPr'):
             for e in re.findall(rf'<hh:{t} id=.*?</hh:{t}>', self.HDR, re.S): self.assertIn(e, h)
         self.assertEqual({p.id for p in reg.order}, set(self.BASIC))
@@ -1019,7 +1021,7 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         self.assertTrue(head.endswith('hasNumRef="0">') and head.count('<hp:subList') == 1 and tail.startswith('</hp:subList><hp:cellAddr'))
         x = reg.parts['bogi'].body({'본문': ''})
         self.assertNotIn('{{', x); ET.fromstring(f'<r xmlns:hp="x">{x}</r>'.encode('utf-8'))
-        for a in ('treatAsChar="1"', 'rowCnt="1" colCnt="1"', 'width="20038"', '<hp:p id="0" paraPrIDRef="92" styleIDRef="0"', 'cellSpacing="0" borderFillIDRef="8"',
+        for a in ('treatAsChar="1"', 'rowCnt="1" colCnt="1"', 'width="20038"', '<hp:p id="0" paraPrIDRef="94" styleIDRef="0"', 'cellSpacing="0" borderFillIDRef="8"',
                   'editable="0" dirty="0" borderFillIDRef="9"', '<hp:run charPrIDRef="0"><hp:tbl', '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0"></hp:subList>'):
             self.assertIn(a, x, a)
         self.assertEqual(len(reg.parts['note'].body_xml.split('<hp:p ')) - 1, 9)
@@ -1063,13 +1065,13 @@ class TComponents(unittest.TestCase):  # scripts/components.py: 정규형·모�
         sub = lambda pat, new: (lambda x: re.sub(pat, new, x, count=1, flags=re.S))  # 첫 문단(구역 설정)은 템플릿 몫이라 건너뛰고 본문부터 찾는다
         cases = {'paraPr': dict(fn=sub(r'(</hp:secPr>.*?paraPrIDRef=")61(")', r'\g<1>1\2')), 'charPr': dict(fn=sub(r'(</hp:p>.*?charPrIDRef=")53(")', r'\g<1>5\2')),
                  'borderFill': dict(fn=sub(r'borderFillIDRef="8"', 'borderFillIDRef="5"')),
-                 'header_align': dict(hfn=lambda h: re.sub(r'<hh:paraPr id="32".*?</hh:paraPr>', lambda m: m.group(0).replace('horizontal="JUSTIFY"', 'horizontal="LEFT"', 1), h, count=1, flags=re.S))}
+                 'header_align': dict(hfn=lambda h: re.sub(r'<hh:paraPr id="90".*?</hh:paraPr>', lambda m: m.group(0).replace('horizontal="JUSTIFY"', 'horizontal="LEFT"', 1), h, count=1, flags=re.S))}
         for k, kw in cases.items():
             q = self.mut(p, name=f'{k}.hwpx', **kw); self.assertNotEqual(self.parts(q), self.parts(p), k)  # 고쳐졌는지
             st, v, _ = self.g50(q); self.assertEqual(st, 'WARN', (k, v)); self.assertIn('등록된 부품에 없는 모양', v, k)
 
     def test_g50_ignores_variant_attributes(self):
-        h = lambda x: re.sub(r'<hh:paraPr id="32".*?</hh:paraPr>', lambda m: re.sub(r'keepWithNext="0"', 'keepWithNext="1"', m.group(0)), x, count=1, flags=re.S)
+        h = lambda x: re.sub(r'<hh:paraPr id="90".*?</hh:paraPr>', lambda m: re.sub(r'keepWithNext="0"', 'keepWithNext="1"', m.group(0)), x, count=1, flags=re.S)
         p = self.built(); q = self.mut(p, hfn=h); self.assertNotEqual(self.parts(q), self.parts(p))
         self.assertEqual(self.g50(q)[0], 'PASS')
 

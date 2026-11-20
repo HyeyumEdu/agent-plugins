@@ -317,11 +317,12 @@ def rules(d, lenient=False, fmt_id=None):
         ch_ = chq[k]
         if len(ch_) != 5: continue
         blk = d.body[i: d.body.index(ch_[-1]) + 1]
+        bogi = len(blk) > 1 and blk[1].find('.//' + P + 'tbl') is not None
         for n_, p_ in enumerate(blk):
-            bs = kwset(p_); want = '0' if n_ == len(blk) - 1 else '1'
-            if bs is None or bs.get('keepWithNext') != want or bs.get('pageBreakBefore', '0') != '0' or (d.txt(p_).strip() and bs.get('keepLines') != '1') or (n_ and (p_.get('pageBreak', '0') != '0' or p_.get('columnBreak', '0') != '0')):  # 발문의 나눔은 문항을 새 단에서 시작할 뿐이라 허용
+            bs = kwset(p_); want = '1' if n_ == 0 and bogi else '0'  # 발문만 〈보기〉와 묶고 나머지는 줄 단위로 흐른다
+            if bs is None or bs.get('keepWithNext') != want or bs.get('keepLines') != want or bs.get('pageBreakBefore', '0') != '0' or (n_ and (p_.get('pageBreak', '0') != '0' or p_.get('columnBreak', '0') != '0')):  # 발문의 나눔은 문항을 새 단에서 시작할 뿐이라 허용
                 bad40.append(k + 1); break
-    add('G40', '문항(발문~⑤)은 단·쪽 경계에서 끊기지 않게 묶임: 마지막(⑤)을 뺀 문단 keepWithNext=1, 글 문단 keepLines=1, 문항 안 나눔·pageBreakBefore 없음' + ('(원본 검사: 골든은 빈 문단으로 맞추므로 건너뜀)' if lenient else ''), lenient or not bad40, f'위반 문항 {bad40[:5]}')
+    add('G40', '문항은 줄 단위로 단·쪽을 넘어가되 발문과 〈보기〉는 같은 단: 〈보기〉가 있으면 발문만 keepWithNext=1·keepLines=1, 나머지 문단(〈보기〉·선택지)과 〈보기〉 없는 발문은 둘 다 0, 문항 안 나눔·pageBreakBefore 없음' + ('(원본 검사: 골든은 빈 문단으로 맞추므로 건너뜀)' if lenient else ''), lenient or not bad40, f'위반 문항 {bad40[:5]}')
     bad41 = []; nob = []
     for n_, k in enumerate(ins):
         p_ = d.body[k]; bs = kwset(p_)
