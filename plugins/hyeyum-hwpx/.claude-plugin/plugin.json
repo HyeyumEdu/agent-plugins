@@ -19,6 +19,7 @@
         "${CLAUDE_PLUGIN_ROOT}/server",
         "src/server.py",
         "${CLAUDE_PROJECT_DIR}",
+        "${user_config.extra_folder}",
         "${HOME:-}/Documents",
         "${HOME:-}/Desktop",
         "${HOME:-}/Downloads"
@@ -27,6 +28,14 @@
         "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv",
         "PYTHONDONTWRITEBYTECODE": "1"
       }
+    }
+  },
+  "userConfig": {
+    "extra_folder": {
+      "type": "directory",
+      "title": "추가로 허용할 폴더 (선택)",
+      "description": "기본으로 작업 폴더와 문서·바탕화면·다운로드 폴더의 한글 문서를 다뤄요. 다른 곳(D 드라이브, USB 등)에 있는 파일을 쓰려면 그 폴더를 골라 주세요.",
+      "default": ""
     }
   }
 }
