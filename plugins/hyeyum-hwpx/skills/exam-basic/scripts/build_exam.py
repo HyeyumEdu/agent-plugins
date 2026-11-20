@@ -535,7 +535,7 @@ def item_passage(b, it, where):
     parts = prep_passage(paras, source_text(it.get('source'), f'{where}.source'), where, st)
     ps = passage_paras(parts, passage_ids(b.reg.use('passage')), b.CP, b.last_t == 'passage', where)
     st['passage'] += 1; st['src'] += sum(kd == 'src' for kd, _, _ in parts)
-    for x in ps: b.emit(x, nlines(re.sub(r'<[^>]+>', '', ptext(x)), b.fs, b.colw - PASSAGE_PAD) * (b.fs * 1.6))  # 문단 테두리 지문: 문단마다 본문 글자 크기×160%, 테두리 안쪽 여백 위아래 11.3pt
+    for x in ps: b.emit(x, nlines(re.sub(r'<[^>]+>', '', ptext(x)), b.fs, b.colw - PASSAGE_PAD) * (b.fs * 1.5))  # 문단 테두리 지문: 문단마다 본문 글자 크기×150%, 테두리 안쪽 여백 위아래 11.3pt
     st['segs'][-1] += 11.3
 
 
@@ -567,27 +567,27 @@ def item_question(b, it, where):  # 문항 번호(st['q'])는 검사 전에 run(
     stem, ch, q = check_question(it, qw); sc = q['score']
     st['scores'].append(sc)
     st['answers'].append(q['answer'])
-    stp = reg.use('stem'); spid, stcp, negcp = PP.get(stp.pp('stem'), kwn=1, kl=1), stp.cp('stem'), stp.cp('negation')  # G40: 발문~④는 다음 문단과 함께, 모든 문단은 줄 단위로 쪼개지지 않게
+    kb = int('bogi' in it)  # G40: 발문은 〈보기〉와 같은 단에(다음 문단과 함께·줄 안 쪼갬), 그 밖의 문항 문단은 줄 단위로 자유롭게 흐른다
+    stp = reg.use('stem'); spid, stcp, negcp = PP.get(stp.pp('stem'), kwn=kb, kl=kb), stp.cp('stem'), stp.cp('negation')
     tag = f' [{sc:.1f}점]'
     pieces, pos = [], 0
     for m in NEG.finditer(stem):  # 부정 낱말은 모두 굵게+밑줄(G15)
         pieces += [(stcp, stem[pos:m.start()]), (negcp, m.group())]; pos = m.end()
     pieces = [p for p in pieces if p[1]] + [(stcp, stem[pos:] + tag)]
-    sh = nlines(stem + tag, b.fs, b.colw - STEM_PAD) * (b.fs * 1.6) + 12.0  # 발문 줄간격 160%, 위 8pt+아래 4pt
+    sh = nlines(stem + tag, b.fs, b.colw - STEM_PAD) * (b.fs * 1.5) + 12.0  # 발문 줄간격 150%, 위 8pt+아래 4pt
     note = f'<hp:run charPrIDRef="{stp.cp("marker")}">{note_xml(n, q, reg.use("note"))}<hp:t/></hp:run>'  # G51: 미주 표시는 흰색 1pt run 에 따로 둬 문제지에서 안 보이게
     b.emit(p_xml(spid, ''.join(run_xml(c_, x_) for c_, x_ in pieces) + note), sh)
     if 'bogi' in it:
         bp = reg.use('bogi'); ps = bogi_paras(it['bogi'], qw, bogi_ids(bp))
         st['tbl'] += 1; st['bogi'] += 1; bx, bh = fill_cell(bp, ps, st['tbl'])
-        bx = re.sub(r'paraPrIDRef="(\d+)"', lambda m_: f'paraPrIDRef="{PP.get(int(m_.group(1)), kwn=1)}"', bx, count=1)  # 보기 상자도 다음 문단과 함께
         b.emit(bx, bh / 100 + 2.8)
     cpt = reg.use('choice'); pp, cp = cpt.pp('choice'), cpt.cp('choice'); tabid = PP.tab(cg['left'] + cg['hang'])
-    lh, aft = b.fs * 1.6, 1.5  # 선택지 줄간격 160%
+    lh, aft = b.fs * 1.5, 1.5  # 선택지 줄간격 150%
     for i, c_ in enumerate(ch):
         sp, nl, stuck = tighten(c_, cg)
         if sp: st['tight'].append((n, i + 1, sp))
         elif stuck: WARNINGS.append(f'{qw}.choices[{i + 1}]: 마지막 줄에 한 글자만 남는데 자간을 -7%까지 줄여도 안 됩니다 — 문구를 줄이세요')
-        cpp = PP.get(pp, kwn=1 if i < 4 else 0, kl=1, tab=tabid)  # ⑤에서 문항 사슬을 끊는다
+        cpp = PP.get(pp, tab=tabid)
         b.emit(choice_xml(cpp, CP.get(cp, spacing=sp) if sp else cp, i, c_, cg), nl * lh + aft)
 
 
